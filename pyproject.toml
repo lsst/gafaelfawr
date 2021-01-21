@@ -11,7 +11,7 @@ build-backend = 'setuptools.build_meta'
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py,coverage-report,typing,lint,docs
+envlist = py,typing,lint,docs
 isolated_build = True
 
 [docker:test-postgres]
@@ -43,7 +43,7 @@ deps =
     -r{toxinidir}/requirements/main.txt
     -r{toxinidir}/requirements/dev.txt
 commands =
-    coverage run -m pytest {posargs}
+    pytest --cov=gafaelfawr --cov-branch --cov-report= -n auto {posargs}
 setenv =
     GAFAELFAWR_UI_PATH = {toxinidir}/ui/public
 
@@ -53,9 +53,7 @@ skip_install = true
 deps = coverage[toml]>=5.0.2
 depends =
     py
-commands =
-    coverage combine
-    coverage report
+commands = coverage report
 
 [testenv:typing]
 description = Run mypy.
@@ -100,11 +98,6 @@ commands_post =
     docker-compose down
 setenv = GAFAELFAWR_SETTINGS_PATH = {toxinidir}/examples/gafaelfawr-dev.yaml
 """
-
-[tool.coverage.run]
-parallel = true
-branch = true
-source = ["gafaelfawr"]
 
 [tool.coverage.paths]
 source = ["src", ".tox/*/site-packages"]
