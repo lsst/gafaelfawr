@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, validator
 
 from gafaelfawr.constants import USERNAME_REGEX
 from gafaelfawr.exceptions import InvalidTokenError
-from gafaelfawr.util import normalize_datetime, random_128_bits
+from gafaelfawr.util import (
+    current_datetime,
+    normalize_datetime,
+    normalize_scopes,
+    random_128_bits,
+)
 
 __all__ = [
     "AdminTokenRequest",
@@ -125,21 +130,26 @@ class TokenBase(BaseModel):
 
     username: str = Field(
         ...,
-        title="The user to whom the token was issued",
+        title="User to whom the token was issued",
         min_length=1,
         max_length=64,
     )
 
-    token_type: TokenType = Field(..., title="The type of the token")
+    token_type: TokenType = Field(..., title="Type of the token")
 
-    scopes: List[str] = Field(..., title="The scopes of the token")
+    scopes: List[str] = Field(..., title="Scopes of the token")
 
     created: datetime = Field(
-        ..., title="Creation timestamp of the token in seconds since epoch"
+        default_factory=current_datetime,
+        title="Creation timestamp of the token in seconds since epoch",
     )
 
     expires: Optional[datetime] = Field(
         None, title="Expiration timestamp of the token in seconds since epoch"
+    )
+
+    _normalize_scopes = validator("scopes", allow_reuse=True, pre=True)(
+        normalize_scopes
     )
 
 
@@ -151,12 +161,12 @@ class TokenInfo(TokenBase):
     """
 
     token: str = Field(
-        ..., title="The identifier of the token", min_length=22, max_length=22
+        ..., title="Identifier of the token", min_length=22, max_length=22
     )
 
     token_name: Optional[str] = Field(
         None,
-        title="The user-given name of the token",
+        title="User-given name of the token",
         min_length=1,
         max_length=64,
     )
@@ -175,7 +185,7 @@ class TokenInfo(TokenBase):
 
     parent: Optional[str] = Field(
         None,
-        title="The parent token of this token",
+        title="Parent token of this token",
         min_length=22,
         max_length=22,
     )
@@ -194,23 +204,6 @@ class TokenInfo(TokenBase):
         normalize_datetime
     )
 
-    @validator("scopes", pre=True)
-    def _normalize_scopes(
-        cls, v: Optional[Union[str, List[str]]]
-    ) -> List[str]:
-        """Convert comma-delimited scopes to a list.
-
-        Scopes are stored in the database as a comma-delimited, sorted list.
-        Convert to the list representation we want to use in Python.  Convert
-        an undefined value to the empty list.
-        """
-        if v is None:
-            return []
-        elif isinstance(v, str):
-            return v.split(",")
-        else:
-            return v
-
 
 class TokenUserInfo(BaseModel):
     """The information about a user stored with their token.
@@ -222,19 +215,19 @@ class TokenUserInfo(BaseModel):
 
     username: str = Field(
         ...,
-        title="The user to whom the token was issued",
+        title="User to whom the token was issued",
         min_length=1,
         max_length=64,
     )
 
     name: Optional[str] = Field(
-        None, title="The user's preferred full name", min_length=1
+        None, title="User's preferred full name", min_length=1
     )
 
-    uid: Optional[int] = Field(None, title="The user's UID number", ge=1)
+    uid: Optional[int] = Field(None, title="User's UID number", ge=1)
 
     groups: Optional[List[TokenGroup]] = Field(
-        None, title="The groups of which the user is a member"
+        None, title="Groups of which the user is a member"
     )
 
 
@@ -264,7 +257,7 @@ class AdminTokenRequest(BaseModel):
 
     username: str = Field(
         ...,
-        title="The user for which to issue a token",
+        title="User for which to issue a token",
         description=(
             "The username may only contain lowercase letters, digits,"
             " period (.), dash (-), and underscore (_)."
@@ -276,13 +269,13 @@ class AdminTokenRequest(BaseModel):
 
     token_type: TokenType = Field(
         ...,
-        title="The type of the token",
+        title="Type of the token",
         description="Must be either service or user.",
     )
 
     token_name: Optional[str] = Field(
         None,
-        title="The user-given name of the token",
+        title="User-given name of the token",
         description="Only provide this field for a token type of user.",
         min_length=1,
         max_length=64,
@@ -297,13 +290,13 @@ class AdminTokenRequest(BaseModel):
     )
 
     name: Optional[str] = Field(
-        None, title="The user's preferred full name", min_length=1
+        None, title="User's preferred full name", min_length=1
     )
 
     uid: Optional[int] = Field(None, title="The user's UID number", ge=1)
 
     groups: Optional[List[TokenGroup]] = Field(
-        None, title="The groups of which the user is a member"
+        None, title="Groups of which the user is a member"
     )
 
     @validator("token_type")
@@ -336,7 +329,9 @@ class UserTokenRequest(BaseModel):
         max_length=64,
     )
 
-    scopes: Optional[List[str]] = Field(None, title="The scopes of the token")
+    scopes: List[str] = Field(
+        default_factory=list, title="Scopes of the token"
+    )
 
     expires: Optional[datetime] = Field(
         None, title="Expiration timestamp of the token in seconds since epoch"
@@ -357,7 +352,7 @@ class UserTokenModifyRequest(BaseModel):
         max_length=64,
     )
 
-    scopes: Optional[List[str]] = Field(None, title="The scopes of the token")
+    scopes: Optional[List[str]] = Field(None, title="Scopes of the token")
 
     expires: Optional[datetime] = Field(
         None, title="Expiration timestamp of the token in seconds since epoch"

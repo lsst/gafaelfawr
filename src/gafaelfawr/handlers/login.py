@@ -213,7 +213,7 @@ async def handle_provider_return(
         scopes = sorted(scopes + ["admin:token"])
     token_service = context.factory.create_token_service()
     token = await token_service.create_session_token(
-        user_info, scopes, ip_address=context.request.client.host
+        user_info, scopes=scopes, ip_address=context.request.client.host
     )
     context.state.token = token
 

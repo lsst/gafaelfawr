@@ -194,7 +194,7 @@ class SetupTest:
             scopes = []
         token_service = self.factory.create_token_service()
         token = await token_service.create_session_token(
-            user_info, scopes, ip_address="127.0.0.1"
+            user_info, scopes=scopes, ip_address="127.0.0.1"
         )
         data = await token_service.get_data(token)
         assert data

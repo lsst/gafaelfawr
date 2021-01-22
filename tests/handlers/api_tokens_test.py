@@ -290,6 +290,7 @@ async def test_csrf_required(setup: SetupTest) -> None:
         token_data,
         token_data.username,
         token_name="foo",
+        scopes=[],
         ip_address="127.0.0.1",
     )
 
@@ -413,6 +414,7 @@ async def test_wrong_user(setup: SetupTest) -> None:
         other_session_data,
         "other-person",
         token_name="foo",
+        scopes=[],
         ip_address="127.0.0.1",
     )
 

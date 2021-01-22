@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Optional, Union
+    from typing import List, Optional, Union
 
 __all__ = [
     "add_padding",
     "base64_to_number",
+    "current_datetime",
     "normalize_datetime",
     "number_to_base64",
     "random_128_bits",
@@ -62,6 +63,11 @@ def base64_to_number(data: str) -> int:
     return int.from_bytes(decoded, byteorder="big")
 
 
+def current_datetime() -> datetime:
+    """Return the current time without microseconds."""
+    return datetime.now(tz=timezone.utc).replace(microsecond=0)
+
+
 def normalize_datetime(
     v: Optional[Union[int, datetime]]
 ) -> Optional[datetime]:
@@ -90,6 +96,33 @@ def normalize_datetime(
         return v
     else:
         return v.replace(tzinfo=timezone.utc)
+
+
+def normalize_scopes(
+    v: Optional[Union[str, List[str]]]
+) -> Optional[List[str]]:
+    """Pydantic validator for scope fields.
+
+    Scopes are stored in the database as a comma-delimited, sorted list.
+    Convert to the list representation we want to use in Python, preserving
+    `None`.
+
+    Parameters
+    ----------
+    v : `str` or List[`str`] or `None`
+        The field representing token scopes.
+
+    Returns
+    -------
+    v : List[`str`] or `None`
+        The scopes as a list.
+    """
+    if v is None:
+        return None
+    elif isinstance(v, str):
+        return [] if v == "" else v.split(",")
+    else:
+        return v
 
 
 def number_to_base64(data: int) -> bytes:

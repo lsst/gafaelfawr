@@ -16,6 +16,7 @@ known_scopes:
   "exec:admin": "admin description"
   "exec:test": "test description"
   "read:all": "can read everything"
+  "read:some": "can read some things"
 issuer:
   iss: "https://test.example.com/"
   key_id: "some-kid"

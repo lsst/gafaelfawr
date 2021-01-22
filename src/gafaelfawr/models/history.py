@@ -2,13 +2,23 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, validator
 
 from gafaelfawr.models.token import TokenType
+from gafaelfawr.util import (
+    current_datetime,
+    normalize_datetime,
+    normalize_scopes,
+)
 
-__all__ = ["AdminChange", "TokenChange"]
+__all__ = [
+    "AdminChange",
+    "AdminHistoryEntry",
+    "TokenChange",
+    "TokenChangeHistoryEntry",
+]
 
 
 class AdminChange(Enum):
@@ -41,10 +51,16 @@ class AdminHistoryEntry(BaseModel):
         ..., title="IP address from which the change was made"
     )
 
-    event_time: datetime = Field(..., title="When the change was made")
+    event_time: datetime = Field(
+        default_factory=current_datetime, title="When the change was made"
+    )
 
     class Config:
         orm_mode = True
+
+    _normalize_event_time = validator(
+        "event_time", allow_reuse=True, pre=True
+    )(normalize_datetime)
 
 
 class TokenChange(Enum):
@@ -153,40 +169,25 @@ class TokenChangeHistoryEntry(BaseModel):
         ),
     )
 
-    event_time: datetime = Field(..., title="Whent he change was made")
+    event_time: datetime = Field(
+        default_factory=current_datetime, title="Whent he change was made"
+    )
 
     class Config:
         orm_mode = True
 
-    @validator("scopes", pre=True)
-    def _normalize_scopes(
-        cls, v: Optional[Union[str, List[str]]]
-    ) -> List[str]:
-        """Convert comma-delimited scopes to a list.
-
-        Scopes are stored in the database as a comma-delimited, sorted list.
-        Convert to the list representation we want to use in Python.  Convert
-        an undefined value to the empty list.
-        """
-        if v is None:
-            return []
-        elif isinstance(v, str):
-            return v.split(",")
-        else:
-            return v
-
-    @validator("old_scopes", pre=True)
-    def _normalize_old_scopes(
-        cls, v: Optional[Union[str, List[str]]]
-    ) -> Optional[List[str]]:
-        """Convert comma-delimited scopes to a list, preserving ``None``.
-
-        Scopes are stored in the database as a comma-delimited, sorted list.
-        Convert to the list representation we want to use in Python.
-        """
-        if v is None:
-            return None
-        elif isinstance(v, str):
-            return v.split(",")
-        else:
-            return v
+    _normalize_scopes = validator("scopes", allow_reuse=True, pre=True)(
+        normalize_scopes
+    )
+    _normalize_expires = validator("expires", allow_reuse=True, pre=True)(
+        normalize_datetime
+    )
+    _normalize_old_expires = validator(
+        "old_expires", allow_reuse=True, pre=True
+    )(normalize_datetime)
+    _normalize_old_scopes = validator(
+        "old_scopes", allow_reuse=True, pre=True
+    )(normalize_scopes)
+    _normalize_event_time = validator(
+        "event_time", allow_reuse=True, pre=True
+    )(normalize_datetime)

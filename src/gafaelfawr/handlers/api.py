@@ -238,7 +238,7 @@ async def post_tokens(
     context: RequestContext = Depends(context_dependency),
 ) -> NewToken:
     token_service = context.factory.create_token_service()
-    token_params = token_request.dict(exclude_unset=True)
+    token_params = token_request.dict()
     try:
         token = await token_service.create_user_token(
             auth_data,

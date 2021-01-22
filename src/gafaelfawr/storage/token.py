@@ -80,7 +80,7 @@ class TokenDatabaseStore:
             username=data.username,
             token_type=data.token_type,
             token_name=token_name,
-            scopes=",".join(sorted(data.scopes)) if data.scopes else None,
+            scopes=",".join(sorted(data.scopes)),
             service=service,
             created=data.created,
             expires=data.expires,

@@ -154,6 +154,7 @@ async def test_user_token(setup: SetupTest) -> None:
         await token_service.create_user_token(
             data,
             "<bootstrap>",
+            scopes=[],
             token_name="bootstrap-token",
             ip_address="127.0.0.1",
         )
@@ -217,6 +218,7 @@ async def test_notebook_token(setup: SetupTest) -> None:
         data,
         data.username,
         token_name="some token",
+        scopes=[],
         expires=None,
         ip_address="127.0.0.1",
     )
@@ -269,7 +271,7 @@ async def test_internal_token(setup: SetupTest) -> None:
     )
 
     # Cannot request a scope that the parent token doesn't have.
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(BadScopesError):
         await token_service.get_internal_token(
             data,
             service="some-service",
@@ -420,7 +422,11 @@ async def test_list(setup: SetupTest) -> None:
     data = await token_service.get_data(session_token)
     assert data
     user_token = await token_service.create_user_token(
-        data, data.username, token_name="some-token", ip_address="127.0.0.1"
+        data,
+        data.username,
+        token_name="some-token",
+        scopes=[],
+        ip_address="127.0.0.1",
     )
 
     session_info = token_service.get_token_info_unchecked(session_token.key)
@@ -444,7 +450,11 @@ async def test_modify(setup: SetupTest) -> None:
     data = await token_service.get_data(session_token)
     assert data
     user_token = await token_service.create_user_token(
-        data, data.username, token_name="some-token", ip_address="127.0.0.1"
+        data,
+        data.username,
+        token_name="some-token",
+        scopes=[],
+        ip_address="127.0.0.1",
     )
 
     now = datetime.now(tz=timezone.utc).replace(microsecond=0)
@@ -479,11 +489,15 @@ async def test_delete(setup: SetupTest) -> None:
     data = await setup.create_session_token()
     token_service = setup.factory.create_token_service()
     token = await token_service.create_user_token(
-        data, data.username, token_name="some token", ip_address="127.0.0.1"
+        data,
+        data.username,
+        token_name="some token",
+        scopes=[],
+        ip_address="127.0.0.1",
     )
 
     assert await token_service.delete_token(
-        token.key, data, ip_address="127.0.0.1"
+        token.key, data, data.username, ip_address="127.0.0.1"
     )
 
     assert await token_service.get_data(token) is None
@@ -491,7 +505,7 @@ async def test_delete(setup: SetupTest) -> None:
     assert await token_service.get_user_info(token) is None
 
     assert not await token_service.delete_token(
-        token.key, data, ip_address="127.0.0.1"
+        token.key, data, data.username, ip_address="127.0.0.1"
     )
 
 
@@ -577,7 +591,7 @@ async def test_invalid_username(setup: SetupTest) -> None:
         data.username = user
         with pytest.raises(PermissionDeniedError):
             await token_service.create_user_token(
-                data, user, token_name="token", ip_address="127.0.0.1"
+                data, user, token_name="n", scopes=[], ip_address="127.0.0.1"
             )
         with pytest.raises(PermissionDeniedError):
             await token_service.get_notebook_token(

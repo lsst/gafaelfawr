@@ -21,7 +21,7 @@ class TokenChangeHistory(Base):
     token_type = Column(Enum(TokenType), nullable=False)
     token_name = Column(String(64))
     parent = Column(String(64))
-    scopes = Column(String(256))
+    scopes = Column(String(256), nullable=False)
     service = Column(String(64))
     expires = Column(DateTime)
     actor = Column(String(64))
