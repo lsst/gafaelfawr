@@ -212,7 +212,9 @@ async def handle_provider_return(
     if admin_service.is_admin(user_info.username):
         scopes = sorted(scopes + ["admin:token"])
     token_service = context.factory.create_token_service()
-    token = await token_service.create_session_token(user_info, scopes)
+    token = await token_service.create_session_token(
+        user_info, scopes, ip_address=context.request.client.host
+    )
     context.state.token = token
 
     # Successful login, so clear the login state and send the user back to

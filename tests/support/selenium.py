@@ -48,7 +48,9 @@ async def startup_event() -> None:
     token_service = factory.create_token_service()
     user_info = TokenUserInfo(username="testuser", name="Test User", uid=1000)
     scopes = list(config.known_scopes.keys())
-    token = await token_service.create_session_token(user_info, scopes)
+    token = await token_service.create_session_token(
+        user_info, scopes, ip_address="127.0.0.1"
+    )
     with open("{token_path}", "w") as f:
         f.write(str(token))
 """

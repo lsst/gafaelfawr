@@ -161,7 +161,9 @@ async def post_admin_tokens(
     token_service = context.factory.create_token_service()
     try:
         token = await token_service.create_token_from_admin_request(
-            token_request, auth_data
+            token_request,
+            auth_data,
+            ip_address=context.request.client.host,
         )
     except BadExpiresError as e:
         raise HTTPException(
@@ -239,7 +241,10 @@ async def post_tokens(
     token_params = token_request.dict(exclude_unset=True)
     try:
         token = await token_service.create_user_token(
-            auth_data, username, **token_params
+            auth_data,
+            username,
+            ip_address=context.request.client.host,
+            **token_params,
         )
     except BadExpiresError as e:
         raise HTTPException(
@@ -311,7 +316,12 @@ async def delete_token(
     context: RequestContext = Depends(context_dependency),
 ) -> None:
     token_service = context.factory.create_token_service()
-    success = await token_service.delete_token(key, auth_data, username)
+    success = await token_service.delete_token(
+        key,
+        auth_data,
+        username,
+        ip_address=context.request.client.host,
+    )
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -344,7 +354,11 @@ async def patch_token(
         update["no_expire"] = True
     try:
         info = await token_service.modify_token(
-            key, auth_data, username, **update
+            key,
+            auth_data,
+            username,
+            ip_address=context.request.client.host,
+            **update,
         )
     except BadExpiresError as e:
         raise HTTPException(

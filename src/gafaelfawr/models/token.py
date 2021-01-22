@@ -288,7 +288,9 @@ class AdminTokenRequest(BaseModel):
         max_length=64,
     )
 
-    scopes: List[str] = Field([], title="The scopes of the token")
+    scopes: List[str] = Field(
+        default_factory=list, title="The scopes of the token"
+    )
 
     expires: Optional[datetime] = Field(
         None, title="Expiration timestamp of the token in seconds since epoch"

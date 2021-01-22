@@ -42,7 +42,9 @@ async def test_session_token(setup: SetupTest) -> None:
         ],
     )
 
-    token = await token_service.create_session_token(user_info, scopes=[])
+    token = await token_service.create_session_token(
+        user_info, scopes=[], ip_address="127.0.0.1"
+    )
     data = await token_service.get_data(token)
     assert data
     assert data == TokenData(
@@ -79,7 +81,7 @@ async def test_session_token(setup: SetupTest) -> None:
 
     # Test a session token with scopes.
     token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(token)
     assert data
@@ -91,7 +93,9 @@ async def test_session_token(setup: SetupTest) -> None:
     # Cannot create a session token with a username of <bootstrap>.
     user_info.username = "<bootstrap>"
     with pytest.raises(PermissionDeniedError):
-        await token_service.create_session_token(user_info, scopes=[])
+        await token_service.create_session_token(
+            user_info, scopes=[], ip_address="127.0.0.1"
+        )
 
 
 @pytest.mark.asyncio
@@ -101,7 +105,7 @@ async def test_user_token(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
@@ -116,6 +120,7 @@ async def test_user_token(setup: SetupTest) -> None:
         token_name="some-token",
         scopes=["read:all", "exec:admin"],
         expires=expires,
+        ip_address="127.0.0.1",
     )
     assert await token_service.get_user_info(user_token) == user_info
     info = token_service.get_token_info_unchecked(user_token.key)
@@ -147,7 +152,10 @@ async def test_user_token(setup: SetupTest) -> None:
     data.username = "<bootstrap>"
     with pytest.raises(PermissionDeniedError):
         await token_service.create_user_token(
-            data, "<bootstrap>", token_name="bootstrap-token"
+            data,
+            "<bootstrap>",
+            token_name="bootstrap-token",
+            ip_address="127.0.0.1",
         )
 
 
@@ -161,13 +169,15 @@ async def test_notebook_token(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
     now = datetime.now(tz=timezone.utc).replace(microsecond=0)
 
-    notebook_token = await token_service.get_notebook_token(data)
+    notebook_token = await token_service.get_notebook_token(
+        data, ip_address="127.0.0.1"
+    )
     assert await token_service.get_user_info(notebook_token) == user_info
     info = token_service.get_token_info_unchecked(notebook_token.key)
     assert info
@@ -196,17 +206,25 @@ async def test_notebook_token(setup: SetupTest) -> None:
 
     # Creating another notebook token from the same parent token just returns
     # the same notebook token as before.
-    new_notebook_token = await token_service.get_notebook_token(data)
+    new_notebook_token = await token_service.get_notebook_token(
+        data, ip_address="127.0.0.1"
+    )
     assert notebook_token == new_notebook_token
 
     # Check that the expiration time is capped by creating a user token that
     # doesn't expire and then creating a notebook token from it.
     user_token = await token_service.create_user_token(
-        data, data.username, token_name="some token", expires=None
+        data,
+        data.username,
+        token_name="some token",
+        expires=None,
+        ip_address="127.0.0.1",
     )
     data = await token_service.get_data(user_token)
     assert data
-    new_notebook_token = await token_service.get_notebook_token(data)
+    new_notebook_token = await token_service.get_notebook_token(
+        data, ip_address="127.0.0.1"
+    )
     assert new_notebook_token != notebook_token
     info = token_service.get_token_info_unchecked(new_notebook_token.key)
     assert info
@@ -224,13 +242,16 @@ async def test_internal_token(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
 
     internal_token = await token_service.get_internal_token(
-        data, service="some-service", scopes=["read:all"]
+        data,
+        service="some-service",
+        scopes=["read:all"],
+        ip_address="127.0.0.1",
     )
     assert await token_service.get_user_info(internal_token) == user_info
     info = token_service.get_token_info_unchecked(internal_token.key)
@@ -250,23 +271,32 @@ async def test_internal_token(setup: SetupTest) -> None:
     # Cannot request a scope that the parent token doesn't have.
     with pytest.raises(PermissionDeniedError):
         await token_service.get_internal_token(
-            data, service="some-service", scopes=["other:scope"]
+            data,
+            service="some-service",
+            scopes=["other:scope"],
+            ip_address="127.0.0.1",
         )
 
     # Creating another internal token from the same parent token with the same
     # parameters just returns the same internal token as before.
     new_internal_token = await token_service.get_internal_token(
-        data, service="some-service", scopes=["read:all"]
+        data,
+        service="some-service",
+        scopes=["read:all"],
+        ip_address="127.0.0.1",
     )
     assert internal_token == new_internal_token
 
     # A different scope or a different service results in a new token.
     new_internal_token = await token_service.get_internal_token(
-        data, service="some-service", scopes=[]
+        data, service="some-service", scopes=[], ip_address="127.0.0.1"
     )
     assert internal_token != new_internal_token
     new_internal_token = await token_service.get_internal_token(
-        data, service="another-service", scopes=["read:all"]
+        data,
+        service="another-service",
+        scopes=["read:all"],
+        ip_address="127.0.0.1",
     )
     assert internal_token != new_internal_token
 
@@ -279,11 +309,12 @@ async def test_internal_token(setup: SetupTest) -> None:
         token_name="some token",
         scopes=["exec:admin"],
         expires=None,
+        ip_address="127.0.0.1",
     )
     data = await token_service.get_data(user_token)
     assert data
     new_internal_token = await token_service.get_internal_token(
-        data, service="some-service", scopes=[]
+        data, service="some-service", scopes=[], ip_address="127.0.0.1"
     )
     assert new_internal_token != internal_token
     info = token_service.get_token_info_unchecked(new_internal_token.key)
@@ -299,7 +330,9 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
         username="example", name="Example Person", uid=4137
     )
     token_service = setup.factory.create_token_service()
-    token = await token_service.create_session_token(user_info, scopes=[])
+    token = await token_service.create_session_token(
+        user_info, scopes=[], ip_address="127.0.0.1"
+    )
     data = await token_service.get_data(token)
     assert data
     now = datetime.now(tz=timezone.utc).replace(microsecond=0)
@@ -318,11 +351,13 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     # Cannot create a token via admin request because the authentication
     # information is missing the admin:token scope.
     with pytest.raises(PermissionDeniedError):
-        await token_service.create_token_from_admin_request(request, data)
+        await token_service.create_token_from_admin_request(
+            request, data, ip_address="127.0.0.1"
+        )
 
     # Get a token with an appropriate scope.
     session_token = await token_service.create_session_token(
-        user_info, scopes=["admin:token"]
+        user_info, scopes=["admin:token"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
@@ -330,19 +365,27 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     # Test a few more errors.
     request.username = "<bootstrap>"
     with pytest.raises(PermissionDeniedError):
-        await token_service.create_token_from_admin_request(request, data)
+        await token_service.create_token_from_admin_request(
+            request, data, ip_address="127.0.0.1"
+        )
     request.username = "otheruser"
     request.scopes = ["bogus:scope"]
     with pytest.raises(BadScopesError):
-        await token_service.create_token_from_admin_request(request, data)
+        await token_service.create_token_from_admin_request(
+            request, data, ip_address="127.0.0.1"
+        )
     request.scopes = ["read:all"]
     request.expires = now
     with pytest.raises(BadExpiresError):
-        await token_service.create_token_from_admin_request(request, data)
+        await token_service.create_token_from_admin_request(
+            request, data, ip_address="127.0.0.1"
+        )
     request.expires = expires
 
     # Try a successful request.
-    token = await token_service.create_token_from_admin_request(request, data)
+    token = await token_service.create_token_from_admin_request(
+        request, data, ip_address="127.0.0.1"
+    )
     user_data = await token_service.get_data(token)
     assert user_data
     assert user_data == TokenData(
@@ -354,7 +397,9 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     request = AdminTokenRequest(
         username="service", token_type=TokenType.service
     )
-    token = await token_service.create_token_from_admin_request(request, data)
+    token = await token_service.create_token_from_admin_request(
+        request, data, ip_address="127.0.0.1"
+    )
     service_data = await token_service.get_data(token)
     assert service_data
     assert service_data == TokenData(
@@ -370,12 +415,12 @@ async def test_list(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=[]
+        user_info, scopes=[], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
     user_token = await token_service.create_user_token(
-        data, data.username, token_name="some-token"
+        data, data.username, token_name="some-token", ip_address="127.0.0.1"
     )
 
     session_info = token_service.get_token_info_unchecked(session_token.key)
@@ -394,21 +439,25 @@ async def test_modify(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all"]
+        user_info, scopes=["read:all"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
     user_token = await token_service.create_user_token(
-        data, data.username, token_name="some-token"
+        data, data.username, token_name="some-token", ip_address="127.0.0.1"
     )
 
     now = datetime.now(tz=timezone.utc).replace(microsecond=0)
     expires = now + timedelta(days=50)
     await token_service.modify_token(
-        user_token.key, data, token_name="happy token"
+        user_token.key, data, token_name="happy token", ip_address="127.0.0.1"
     )
     await token_service.modify_token(
-        user_token.key, data, scopes=["read:all"], expires=expires
+        user_token.key,
+        data,
+        scopes=["read:all"],
+        expires=expires,
+        ip_address="127.0.0.1",
     )
     info = token_service.get_token_info_unchecked(user_token.key)
     assert info
@@ -430,16 +479,20 @@ async def test_delete(setup: SetupTest) -> None:
     data = await setup.create_session_token()
     token_service = setup.factory.create_token_service()
     token = await token_service.create_user_token(
-        data, data.username, token_name="some token"
+        data, data.username, token_name="some token", ip_address="127.0.0.1"
     )
 
-    assert await token_service.delete_token(token.key, data)
+    assert await token_service.delete_token(
+        token.key, data, ip_address="127.0.0.1"
+    )
 
     assert await token_service.get_data(token) is None
     assert token_service.get_token_info_unchecked(token.key) is None
     assert await token_service.get_user_info(token) is None
 
-    assert not await token_service.delete_token(token.key, data)
+    assert not await token_service.delete_token(
+        token.key, data, ip_address="127.0.0.1"
+    )
 
 
 @pytest.mark.asyncio
@@ -509,7 +562,7 @@ async def test_invalid_username(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     data = await token_service.get_data(session_token)
     assert data
@@ -518,15 +571,21 @@ async def test_invalid_username(setup: SetupTest) -> None:
     for user in ("in+valid", " invalid", "invalid ", "in/valid", "in@valid"):
         user_info.username = user
         with pytest.raises(PermissionDeniedError):
-            await token_service.create_session_token(user_info, scopes=[])
+            await token_service.create_session_token(
+                user_info, scopes=[], ip_address="127.0.0.1"
+            )
         data.username = user
         with pytest.raises(PermissionDeniedError):
-            await token_service.create_user_token(data, user, token_name="n")
+            await token_service.create_user_token(
+                data, user, token_name="token", ip_address="127.0.0.1"
+            )
         with pytest.raises(PermissionDeniedError):
-            await token_service.get_notebook_token(data)
+            await token_service.get_notebook_token(
+                data, ip_address="127.0.0.1"
+            )
         with pytest.raises(PermissionDeniedError):
             await token_service.get_internal_token(
-                data, service="s", scopes=[]
+                data, service="s", scopes=[], ip_address="127.0.0.1"
             )
         with pytest.raises(ValidationError):
             AdminTokenRequest(username=user, token_type=TokenType.service)

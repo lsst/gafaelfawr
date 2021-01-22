@@ -28,7 +28,7 @@ async def test_create_delete_modify(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["read:all", "exec:admin"]
+        user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
     )
     csrf = await setup.login(session_token)
 
@@ -143,7 +143,7 @@ async def test_token_info(setup: SetupTest) -> None:
     )
     token_service = setup.factory.create_token_service()
     session_token = await token_service.create_session_token(
-        user_info, scopes=["exec:admin"]
+        user_info, scopes=["exec:admin"], ip_address="127.0.0.1"
     )
 
     r = await setup.client.get(
@@ -194,6 +194,7 @@ async def test_token_info(setup: SetupTest) -> None:
         token_name="some-token",
         scopes=["exec:admin"],
         expires=expires,
+        ip_address="127.0.0.1",
     )
 
     r = await setup.client.get(
@@ -286,7 +287,10 @@ async def test_csrf_required(setup: SetupTest) -> None:
     csrf = await setup.login(token_data.token)
     token_service = setup.factory.create_token_service()
     user_token = await token_service.create_user_token(
-        token_data, token_data.username, token_name="foo"
+        token_data,
+        token_data.username,
+        token_name="foo",
+        ip_address="127.0.0.1",
     )
 
     r = await setup.client.post(
@@ -401,12 +405,15 @@ async def test_wrong_user(setup: SetupTest) -> None:
         username="other-person", name="Some Other Person", uid=137123
     )
     other_session_token = await token_service.create_session_token(
-        user_info, scopes=[]
+        user_info, scopes=[], ip_address="127.0.0.1"
     )
     other_session_data = await token_service.get_data(other_session_token)
     assert other_session_data
     other_token = await token_service.create_user_token(
-        other_session_data, "other-person", token_name="foo"
+        other_session_data,
+        "other-person",
+        token_name="foo",
+        ip_address="127.0.0.1",
     )
 
     # Get a token list.

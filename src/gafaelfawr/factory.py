@@ -17,7 +17,7 @@ from gafaelfawr.services.oidc import OIDCService
 from gafaelfawr.services.token import TokenService
 from gafaelfawr.storage.admin import AdminStore
 from gafaelfawr.storage.base import RedisStorage
-from gafaelfawr.storage.history import AdminHistoryStore
+from gafaelfawr.storage.history import AdminHistoryStore, TokenHistoryStore
 from gafaelfawr.storage.oidc import OIDCAuthorization, OIDCAuthorizationStore
 from gafaelfawr.storage.token import TokenDatabaseStore, TokenRedisStore
 from gafaelfawr.storage.transaction import TransactionManager
@@ -167,11 +167,13 @@ class ComponentFactory:
         key = self._config.session_secret
         storage = RedisStorage(TokenData, key, self._redis)
         token_redis_store = TokenRedisStore(storage, self._logger)
+        token_history_store = TokenHistoryStore(self._session)
         transaction_manager = TransactionManager(self._session)
         return TokenService(
             config=self._config,
             token_db_store=token_db_store,
             token_redis_store=token_redis_store,
+            token_history_store=token_history_store,
             transaction_manager=transaction_manager,
             logger=self._logger,
         )
