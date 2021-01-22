@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import click
@@ -51,7 +50,7 @@ def help(ctx: click.Context, topic: Union[None, str]) -> None:
     "--port", default=8080, type=int, help="Port to run the application on."
 )
 def run(port: int) -> None:
-    """Run the application (for testing, use Gunicorn for production)."""
+    """Run the application (for testing only)."""
     uvicorn.run(
         "gafaelfawr.main:app", port=port, reload=True, reload_dirs=["src"]
     )
@@ -59,16 +58,14 @@ def run(port: int) -> None:
 
 @main.command()
 def generate_key() -> None:
-    """Generate a new RSA key pair."""
+    """Generate a new RSA key pair and print the private key."""
     keypair = RSAKeyPair.generate()
     print(keypair.private_key_as_pem())
-    print(keypair.public_key_as_pem())
-    print(json.dumps(keypair.public_key_as_jwks(), indent=4))
 
 
 @main.command()
 def generate_token() -> None:
-    """Generate an encoded token, used to generate the bootstrap token."""
+    """Generate an encoded token (such as the bootstrap token)."""
     print(str(Token()))
 
 

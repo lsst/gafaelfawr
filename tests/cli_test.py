@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import json
-import re
-from unittest.mock import ANY
-
 from click.testing import CliRunner
 
 from gafaelfawr.cli import main
-from gafaelfawr.constants import ALGORITHM
 from gafaelfawr.models.token import Token
 
 
@@ -19,18 +14,6 @@ def test_generate_key() -> None:
 
     assert result.exit_code == 0
     assert "-----BEGIN PRIVATE KEY-----" in result.output
-    assert "-----BEGIN PUBLIC KEY-----" in result.output
-
-    match = re.search("({.*})", result.output, flags=re.DOTALL)
-    assert match
-    jwks = json.loads(match.group(1))
-    assert jwks == {
-        "alg": ALGORITHM,
-        "kty": "RSA",
-        "use": "sig",
-        "n": ANY,
-        "e": ANY,
-    }
 
 
 def test_generate_token() -> None:
