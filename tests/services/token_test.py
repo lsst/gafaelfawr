@@ -15,6 +15,7 @@ from gafaelfawr.exceptions import (
     BadScopesError,
     PermissionDeniedError,
 )
+from gafaelfawr.models.history import TokenChange, TokenChangeHistoryEntry
 from gafaelfawr.models.token import (
     AdminTokenRequest,
     Token,
@@ -79,6 +80,20 @@ async def test_session_token(setup: SetupTest) -> None:
     )
     assert await token_service.get_user_info(token) == user_info
 
+    assert token_service.change_history(token.key, data) == [
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=data.username,
+            token_type=TokenType.session,
+            scopes=[],
+            expires=data.expires,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="127.0.0.1",
+            event_type=data.created,
+        )
+    ]
+
     # Test a session token with scopes.
     token = await token_service.create_session_token(
         user_info, scopes=["read:all", "exec:admin"], ip_address="127.0.0.1"
@@ -110,7 +125,7 @@ async def test_user_token(setup: SetupTest) -> None:
         token_name="some-token",
         scopes=["read:all", "exec:admin"],
         expires=expires,
-        ip_address="127.0.0.1",
+        ip_address="192.168.0.1",
     )
     assert await token_service.get_user_info(user_token) == user_info
     info = token_service.get_token_info_unchecked(user_token.key)
@@ -136,6 +151,21 @@ async def test_user_token(setup: SetupTest) -> None:
         name=user_info.name,
         uid=user_info.uid,
     )
+
+    assert token_service.change_history(user_token.key, data) == [
+        TokenChangeHistoryEntry(
+            token=user_token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="some-token",
+            scopes=["exec:admin", "read:all"],
+            expires=info.expires,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="192.168.0.1",
+            event_type=info.created,
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -186,6 +216,21 @@ async def test_notebook_token(setup: SetupTest) -> None:
     )
     assert token == new_token
 
+    assert token_service.change_history(token.key, data) == [
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=data.username,
+            token_type=TokenType.notebook,
+            parent=data.token.key,
+            scopes=["exec:admin", "read:all"],
+            expires=data.expires,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="1.0.0.1",
+            event_type=info.created,
+        )
+    ]
+
     # Check that the expiration time is capped by creating a user token that
     # doesn't expire and then creating a notebook token from it.
     user_token = await token_service.create_user_token(
@@ -227,7 +272,7 @@ async def test_internal_token(setup: SetupTest) -> None:
         data,
         service="some-service",
         scopes=["read:all"],
-        ip_address="127.0.0.1",
+        ip_address="2001:db8::45",
     )
     assert await token_service.get_user_info(internal_token) == user_info
     info = token_service.get_token_info_unchecked(internal_token.key)
@@ -262,6 +307,22 @@ async def test_internal_token(setup: SetupTest) -> None:
         ip_address="127.0.0.1",
     )
     assert internal_token == new_internal_token
+
+    assert token_service.change_history(internal_token.key, data) == [
+        TokenChangeHistoryEntry(
+            token=internal_token.key,
+            username=data.username,
+            token_type=TokenType.internal,
+            parent=data.token.key,
+            service="some-service",
+            scopes=["read:all"],
+            expires=data.expires,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="2001:db8::45",
+            event_type=info.created,
+        )
+    ]
 
     # A different scope or a different service results in a new token.
     new_internal_token = await token_service.get_internal_token(
@@ -336,26 +397,26 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     session_token = await token_service.create_session_token(
         user_info, scopes=["admin:token"], ip_address="127.0.0.1"
     )
-    data = await token_service.get_data(session_token)
-    assert data
+    admin_data = await token_service.get_data(session_token)
+    assert admin_data
 
     # Test a few more errors.
     request.scopes = ["bogus:scope"]
     with pytest.raises(BadScopesError):
         await token_service.create_token_from_admin_request(
-            request, data, ip_address="127.0.0.1"
+            request, admin_data, ip_address="127.0.0.1"
         )
     request.scopes = ["read:all"]
     request.expires = current_datetime()
     with pytest.raises(BadExpiresError):
         await token_service.create_token_from_admin_request(
-            request, data, ip_address="127.0.0.1"
+            request, admin_data, ip_address="127.0.0.1"
         )
     request.expires = expires
 
     # Try a successful request.
     token = await token_service.create_token_from_admin_request(
-        request, data, ip_address="127.0.0.1"
+        request, admin_data, ip_address="127.0.0.1"
     )
     user_data = await token_service.get_data(token)
     assert user_data and user_data == TokenData(
@@ -363,18 +424,50 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     )
     assert_is_now(user_data.created)
 
+    assert token_service.change_history(token.key, admin_data) == [
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=request.username,
+            token_type=TokenType.user,
+            token_name=request.token_name,
+            scopes=["read:all"],
+            expires=request.expires,
+            actor=admin_data.username,
+            action=TokenChange.create,
+            ip_address="127.0.0.1",
+            event_type=user_data.created,
+        )
+    ]
+
+    # Non-admins can't see other people's tokens.
+    assert token_service.change_history(token.key, data) == []
+
     # Now request a service token with minimal data instead.
     request = AdminTokenRequest(
         username="service", token_type=TokenType.service
     )
     token = await token_service.create_token_from_admin_request(
-        request, data, ip_address="127.0.0.1"
+        request, admin_data, ip_address="127.0.0.1"
     )
     service_data = await token_service.get_data(token)
     assert service_data and service_data == TokenData(
         token=token, created=service_data.created, **request.dict()
     )
     assert_is_now(service_data.created)
+
+    assert token_service.change_history(token.key, admin_data) == [
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=request.username,
+            token_type=TokenType.service,
+            scopes=[],
+            expires=None,
+            actor=admin_data.username,
+            action=TokenChange.create,
+            ip_address="127.0.0.1",
+            event_type=service_data.created,
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -453,7 +546,7 @@ async def test_modify(setup: SetupTest) -> None:
         data,
         scopes=["read:all"],
         expires=expires,
-        ip_address="127.0.0.1",
+        ip_address="192.168.0.4",
     )
     info = token_service.get_token_info_unchecked(user_token.key)
     assert info and info == TokenInfo(
@@ -467,6 +560,69 @@ async def test_modify(setup: SetupTest) -> None:
         last_used=None,
         parent=None,
     )
+    await token_service.modify_token(
+        user_token.key,
+        data,
+        expires=None,
+        no_expire=True,
+        ip_address="127.0.4.5",
+    )
+
+    history = token_service.change_history(user_token.key, data)
+    assert history == [
+        TokenChangeHistoryEntry(
+            token=user_token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="some-token",
+            scopes=[],
+            expires=None,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="127.0.0.1",
+            event_time=info.created,
+        ),
+        TokenChangeHistoryEntry(
+            token=user_token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="happy token",
+            scopes=[],
+            expires=None,
+            actor=data.username,
+            action=TokenChange.edit,
+            old_token_name="some-token",
+            ip_address="127.0.0.1",
+            event_time=history[1].event_time,
+        ),
+        TokenChangeHistoryEntry(
+            token=user_token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="happy token",
+            scopes=["read:all"],
+            expires=expires,
+            actor=data.username,
+            action=TokenChange.edit,
+            old_scopes=[],
+            old_expires=None,
+            ip_address="192.168.0.4",
+            event_time=history[2].event_time,
+        ),
+        TokenChangeHistoryEntry(
+            token=user_token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="happy token",
+            scopes=["read:all"],
+            expires=None,
+            actor=data.username,
+            action=TokenChange.edit,
+            old_expires=expires,
+            ip_address="127.0.4.5",
+            event_time=history[3].event_time,
+        ),
+    ]
 
 
 @pytest.mark.asyncio
@@ -492,6 +648,34 @@ async def test_delete(setup: SetupTest) -> None:
     assert not await token_service.delete_token(
         token.key, data, data.username, ip_address="127.0.0.1"
     )
+
+    history = token_service.change_history(token.key, data)
+    assert history == [
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="some token",
+            scopes=[],
+            expires=None,
+            actor=data.username,
+            action=TokenChange.create,
+            ip_address="127.0.0.1",
+            event_time=history[0].event_time,
+        ),
+        TokenChangeHistoryEntry(
+            token=token.key,
+            username=data.username,
+            token_type=TokenType.user,
+            token_name="some token",
+            scopes=[],
+            expires=None,
+            actor=data.username,
+            action=TokenChange.revoke,
+            ip_address="127.0.0.1",
+            event_time=history[1].event_time,
+        ),
+    ]
 
     # Cannot delete someone else's token.
     token = await token_service.create_user_token(

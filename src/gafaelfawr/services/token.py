@@ -73,6 +73,33 @@ class TokenService:
         self._transaction_manager = transaction_manager
         self._logger = logger
 
+    def change_history(
+        self, key: str, auth_data: TokenData
+    ) -> List[TokenChangeHistoryEntry]:
+        """Retrieve the change history of a token.
+
+        Parameters
+        ----------
+        key : `str`
+            The key of the token.
+        auth_data : `gafaelfawr.models.token.TokenData`
+            Authentication information for the user making the request.
+
+        Returns
+        -------
+        entries : List[`gafaelfawr.models.history.TokenChangeHistory.Entry`]
+            A list of changes to that token, which may be the empty list if
+            the token has never existed.  The list will be filtered down to
+            only entries for tokens matching the username of the user making
+            the request unless the user is a token admin.
+        """
+        if "admin:token" not in auth_data.scopes:
+            return self._token_history_store.list(
+                token=key, username=auth_data.username
+            )
+        else:
+            return self._token_history_store.list(token=key)
+
     async def create_session_token(
         self, user_info: TokenUserInfo, *, scopes: List[str], ip_address: str
     ) -> Token:

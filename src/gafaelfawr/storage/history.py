@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from gafaelfawr.models.history import TokenChangeHistoryEntry
 from gafaelfawr.schema import AdminHistory, TokenChangeHistory
 
 if TYPE_CHECKING:
+    from typing import List, Optional
+
     from sqlalchemy.orm import Session
 
-    from gafaelfawr.models.history import (
-        AdminHistoryEntry,
-        TokenChangeHistoryEntry,
-    )
+    from gafaelfawr.models.history import AdminHistoryEntry
 
 __all__ = ["AdminHistoryStore"]
 
@@ -55,7 +55,31 @@ class TokenHistoryStore:
         # and a comma-separated string otherwise.
         entry_dict["scopes"] = ",".join(sorted(entry.scopes))
         if entry.old_scopes is not None:
-            entry_dict["old_scopes"] = ",".join(sorted(entry.scopes))
+            entry_dict["old_scopes"] = ",".join(sorted(entry.old_scopes))
 
         new = TokenChangeHistory(**entry_dict)
         self._session.add(new)
+
+    def list(
+        self, *, token: str, username: Optional[str] = None
+    ) -> List[TokenChangeHistoryEntry]:
+        """Return all changes to a specific token.
+
+        Parameters
+        ----------
+        token : `str`
+            The token for which to retrieve history.
+        username : `str`, optional
+            If given, filter the return values to only tokens for the given
+            username.
+
+        Returns
+        -------
+        entries : List[`gafaelfawr.models.history.TokenChangeHistoryEntry`]
+            List of change history entries, which may be empty.
+        """
+        query = self._session.query(TokenChangeHistory).filter_by(token=token)
+        if username:
+            query = query.filter_by(username=username)
+        query = query.order_by(TokenChangeHistory.event_time)
+        return [TokenChangeHistoryEntry.from_orm(e) for e in query.all()]
