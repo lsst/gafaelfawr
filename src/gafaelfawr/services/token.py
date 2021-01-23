@@ -74,7 +74,7 @@ class TokenService:
         self._logger = logger
 
     def change_history(
-        self, key: str, auth_data: TokenData
+        self, key: str, auth_data: TokenData, username: str
     ) -> List[TokenChangeHistoryEntry]:
         """Retrieve the change history of a token.
 
@@ -84,6 +84,8 @@ class TokenService:
             The key of the token.
         auth_data : `gafaelfawr.models.token.TokenData`
             Authentication information for the user making the request.
+        username : `str`
+            Constrain token history to tokens owned by the given user.
 
         Returns
         -------
@@ -93,12 +95,8 @@ class TokenService:
             only entries for tokens matching the username of the user making
             the request unless the user is a token admin.
         """
-        if "admin:token" not in auth_data.scopes:
-            return self._token_history_store.list(
-                token=key, username=auth_data.username
-            )
-        else:
-            return self._token_history_store.list(token=key)
+        self._check_authorization(username, auth_data)
+        return self._token_history_store.list(token=key, username=username)
 
     async def create_session_token(
         self, user_info: TokenUserInfo, *, scopes: List[str], ip_address: str

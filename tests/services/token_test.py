@@ -80,7 +80,7 @@ async def test_session_token(setup: SetupTest) -> None:
     )
     assert await token_service.get_user_info(token) == user_info
 
-    assert token_service.change_history(token.key, data) == [
+    assert token_service.change_history(token.key, data, data.username) == [
         TokenChangeHistoryEntry(
             token=token.key,
             username=data.username,
@@ -152,7 +152,8 @@ async def test_user_token(setup: SetupTest) -> None:
         uid=user_info.uid,
     )
 
-    assert token_service.change_history(user_token.key, data) == [
+    history = token_service.change_history(user_token.key, data, data.username)
+    assert history == [
         TokenChangeHistoryEntry(
             token=user_token.key,
             username=data.username,
@@ -216,7 +217,7 @@ async def test_notebook_token(setup: SetupTest) -> None:
     )
     assert token == new_token
 
-    assert token_service.change_history(token.key, data) == [
+    assert token_service.change_history(token.key, data, data.username) == [
         TokenChangeHistoryEntry(
             token=token.key,
             username=data.username,
@@ -308,7 +309,10 @@ async def test_internal_token(setup: SetupTest) -> None:
     )
     assert internal_token == new_internal_token
 
-    assert token_service.change_history(internal_token.key, data) == [
+    history = token_service.change_history(
+        internal_token.key, data, data.username
+    )
+    assert history == [
         TokenChangeHistoryEntry(
             token=internal_token.key,
             username=data.username,
@@ -424,7 +428,10 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     )
     assert_is_now(user_data.created)
 
-    assert token_service.change_history(token.key, admin_data) == [
+    history = token_service.change_history(
+        token.key, admin_data, request.username
+    )
+    assert history == [
         TokenChangeHistoryEntry(
             token=token.key,
             username=request.username,
@@ -440,7 +447,8 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     ]
 
     # Non-admins can't see other people's tokens.
-    assert token_service.change_history(token.key, data) == []
+    with pytest.raises(PermissionDeniedError):
+        token_service.change_history(token.key, data, request.username)
 
     # Now request a service token with minimal data instead.
     request = AdminTokenRequest(
@@ -455,7 +463,10 @@ async def test_token_from_admin_request(setup: SetupTest) -> None:
     )
     assert_is_now(service_data.created)
 
-    assert token_service.change_history(token.key, admin_data) == [
+    history = token_service.change_history(
+        token.key, admin_data, request.username
+    )
+    assert history == [
         TokenChangeHistoryEntry(
             token=token.key,
             username=request.username,
@@ -568,7 +579,7 @@ async def test_modify(setup: SetupTest) -> None:
         ip_address="127.0.4.5",
     )
 
-    history = token_service.change_history(user_token.key, data)
+    history = token_service.change_history(user_token.key, data, data.username)
     assert history == [
         TokenChangeHistoryEntry(
             token=user_token.key,
@@ -649,7 +660,7 @@ async def test_delete(setup: SetupTest) -> None:
         token.key, data, data.username, ip_address="127.0.0.1"
     )
 
-    history = token_service.change_history(token.key, data)
+    history = token_service.change_history(token.key, data, data.username)
     assert history == [
         TokenChangeHistoryEntry(
             token=token.key,

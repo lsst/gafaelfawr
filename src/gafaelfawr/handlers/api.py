@@ -8,7 +8,7 @@ models.
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, Dict, List
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
@@ -23,6 +23,7 @@ from gafaelfawr.exceptions import (
 )
 from gafaelfawr.models.admin import Admin
 from gafaelfawr.models.auth import APIConfig, APILoginResponse, Scope
+from gafaelfawr.models.history import TokenChangeHistoryEntry
 from gafaelfawr.models.token import (
     AdminTokenRequest,
     NewToken,
@@ -397,3 +398,30 @@ async def patch_token(
             },
         )
     return info
+
+
+@router.get(
+    "/users/{username}/tokens/{key}/change-history",
+    response_model=List[TokenChangeHistoryEntry],
+    response_model_exclude_unset=True,
+)
+async def get_token_change_history(
+    username: str = Path(
+        ..., min_length=1, max_length=64, regex=USERNAME_REGEX
+    ),
+    key: str = Path(..., min_length=22, max_length=22),
+    auth_data: TokenData = Depends(authenticate_session),
+    context: RequestContext = Depends(context_dependency),
+) -> List[Dict[str, Any]]:
+    token_service = context.factory.create_token_service()
+    results = token_service.change_history(key, auth_data, username)
+    if not results:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "loc": ["path", "token"],
+                "type": "not_found",
+                "msg": "Token not found",
+            },
+        )
+    return [r.reduced_dict() for r in results]

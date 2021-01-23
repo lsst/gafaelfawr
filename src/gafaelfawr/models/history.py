@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -134,8 +134,8 @@ class TokenChangeHistoryEntry(BaseModel):
         None,
         title="Previous name of the token",
         description=(
-            "This field will only be set for edit changes to user tokens that"
-            " changed the token name."
+            "This field will only be present for edit changes to user tokens"
+            " that changed the token name."
         ),
     )
 
@@ -143,7 +143,7 @@ class TokenChangeHistoryEntry(BaseModel):
         None,
         title="Previous scopes of the token",
         description=(
-            "This field will only be set for edit changes that changed the"
+            "This field will only be present for edit changes that changed the"
             " token scopes."
         ),
     )
@@ -152,11 +152,8 @@ class TokenChangeHistoryEntry(BaseModel):
         None,
         title="Previous expiration of the token",
         description=(
-            "This field will only be set for edit changes that changed the"
-            " expiration of the token.  Be aware that the value could be null"
-            " if the expiration was not changed or if the token previously"
-            " did not expire. To distinguish between those cases, compare"
-            " old_expires to expires."
+            "This field will only be present for edit changes that changed the"
+            " expiration of the token."
         ),
     )
 
@@ -174,6 +171,7 @@ class TokenChangeHistoryEntry(BaseModel):
     )
 
     class Config:
+        json_encoders = {datetime: lambda v: int(v.timestamp())}
         orm_mode = True
 
     _normalize_scopes = validator("scopes", allow_reuse=True, pre=True)(
@@ -191,3 +189,27 @@ class TokenChangeHistoryEntry(BaseModel):
     _normalize_event_time = validator(
         "event_time", allow_reuse=True, pre=True
     )(normalize_datetime)
+
+    def reduced_dict(self) -> Dict[str, Any]:
+        """Custom ``dict`` method to suppress some fields.
+
+        Excludes the ``old_`` fields for changes other than edits, and when
+        the edit doesn't change those fields.
+        """
+        v = self.dict()
+
+        for field in ("token_name", "parent", "service"):
+            if v[field] is None:
+                del v[field]
+        if v["action"] == TokenChange.edit:
+            for field in ("old_scopes", "old_token_name"):
+                if v[field] is None:
+                    del v[field]
+            if v["old_expires"] is None and v["expires"] is None:
+                del v["old_expires"]
+        else:
+            del v["old_expires"]
+            del v["old_scopes"]
+            del v["old_token_name"]
+
+        return v

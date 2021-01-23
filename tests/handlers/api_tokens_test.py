@@ -12,6 +12,7 @@ import pytest
 from gafaelfawr.constants import COOKIE_NAME
 from gafaelfawr.models.state import State
 from gafaelfawr.models.token import Token, TokenGroup, TokenUserInfo
+from gafaelfawr.util import current_datetime
 from tests.support.constants import TEST_HOSTNAME
 
 if TYPE_CHECKING:
@@ -32,8 +33,7 @@ async def test_create_delete_modify(setup: SetupTest) -> None:
     )
     csrf = await setup.login(session_token)
 
-    now = datetime.now(tz=timezone.utc)
-    expires = now + timedelta(days=100)
+    expires = current_datetime() + timedelta(days=100)
     r = await setup.client.post(
         "/auth/api/v1/users/example/tokens",
         headers={"X-CSRF-Token": csrf},
@@ -96,14 +96,14 @@ async def test_create_delete_modify(setup: SetupTest) -> None:
     )
 
     # Change the name, scope, and expiration of the token.
-    expires = now + timedelta(days=200)
+    new_expires = current_datetime() + timedelta(days=200)
     r = await setup.client.patch(
         token_url,
         headers={"X-CSRF-Token": csrf},
         json={
             "token_name": "happy token",
             "scopes": ["exec:admin"],
-            "expires": int(expires.timestamp()),
+            "expires": int(new_expires.timestamp()),
         },
     )
     assert r.status_code == 201
@@ -114,7 +114,7 @@ async def test_create_delete_modify(setup: SetupTest) -> None:
         "token_type": "user",
         "scopes": ["exec:admin"],
         "created": ANY,
-        "expires": int(expires.timestamp()),
+        "expires": int(new_expires.timestamp()),
     }
 
     # Delete the token.
@@ -131,6 +131,51 @@ async def test_create_delete_modify(setup: SetupTest) -> None:
     r = await setup.client.get("/auth/api/v1/users/example/tokens")
     assert r.status_code == 200
     assert len(r.json()) == 1
+
+    # We should be able to see the change history for the token.
+    r = await setup.client.get(token_url + "/change-history")
+    assert r.status_code == 200
+    assert r.json() == [
+        {
+            "token": user_token.key,
+            "username": "example",
+            "token_type": "user",
+            "token_name": "some token",
+            "scopes": ["read:all"],
+            "expires": int(expires.timestamp()),
+            "actor": "example",
+            "action": "create",
+            "ip_address": "127.0.0.1",
+            "event_time": ANY,
+        },
+        {
+            "token": user_token.key,
+            "username": "example",
+            "token_type": "user",
+            "token_name": "happy token",
+            "scopes": ["exec:admin"],
+            "expires": int(new_expires.timestamp()),
+            "actor": "example",
+            "action": "edit",
+            "old_token_name": "some token",
+            "old_scopes": ["read:all"],
+            "old_expires": int(expires.timestamp()),
+            "ip_address": "127.0.0.1",
+            "event_time": ANY,
+        },
+        {
+            "token": user_token.key,
+            "username": "example",
+            "token_type": "user",
+            "token_name": "happy token",
+            "scopes": ["exec:admin"],
+            "expires": int(new_expires.timestamp()),
+            "actor": "example",
+            "action": "revoke",
+            "ip_address": "127.0.0.1",
+            "event_time": ANY,
+        },
+    ]
 
 
 @pytest.mark.asyncio
@@ -264,6 +309,11 @@ async def test_auth_required(setup: SetupTest) -> None:
 
     r = await setup.client.get(
         f"/auth/api/v1/users/example/tokens/{token.key}"
+    )
+    assert r.status_code == 401
+
+    r = await setup.client.get(
+        f"/auth/api/v1/users/example/tokens/{token.key}/change-history"
     )
     assert r.status_code == 401
 
@@ -439,9 +489,24 @@ async def test_wrong_user(setup: SetupTest) -> None:
     assert r.status_code == 403
     assert r.json()["detail"]["type"] == "permission_denied"
 
+    # Get the history of an individual token.
+    r = await setup.client.get(
+        f"/auth/api/v1/users/other-person/tokens/{other_token.key}"
+        "/change-history"
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"]["type"] == "permission_denied"
+
     # Ensure you can't see someone else's token under your username either.
     r = await setup.client.get(
         f"/auth/api/v1/users/{token_data.username}/tokens/{other_token.key}"
+    )
+    assert r.status_code == 404
+
+    # Or their history.
+    r = await setup.client.get(
+        f"/auth/api/v1/users/{token_data.username}/tokens/{other_token.key}"
+        "/change-history"
     )
     assert r.status_code == 404
 
@@ -506,8 +571,7 @@ async def test_no_expires(setup: SetupTest) -> None:
     user_token = Token.from_str(r.json()["token"])
     token_service = setup.factory.create_token_service()
     user_token_data = await token_service.get_data(user_token)
-    assert user_token_data
-    assert user_token_data.expires == expires
+    assert user_token_data and user_token_data.expires == expires
     token_url = r.headers["Location"]
 
     r = await setup.client.get(token_url)
@@ -524,8 +588,7 @@ async def test_no_expires(setup: SetupTest) -> None:
     # Check that the expiration was also changed in Redis.
     token_service = setup.factory.create_token_service()
     user_token_data = await token_service.get_data(user_token)
-    assert user_token_data
-    assert user_token_data.expires is None
+    assert user_token_data and user_token_data.expires is None
 
 
 @pytest.mark.asyncio
