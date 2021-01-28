@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import time
 from datetime import datetime, timedelta
@@ -10,10 +11,15 @@ from typing import TYPE_CHECKING
 from gafaelfawr.constants import MINIMUM_LIFETIME, USERNAME_REGEX
 from gafaelfawr.exceptions import (
     BadExpiresError,
+    BadIpAddressError,
     BadScopesError,
     PermissionDeniedError,
 )
-from gafaelfawr.models.history import TokenChange, TokenChangeHistoryEntry
+from gafaelfawr.models.history import (
+    HistoryCursor,
+    TokenChange,
+    TokenChangeHistoryEntry,
+)
 from gafaelfawr.models.token import (
     AdminTokenRequest,
     Token,
@@ -29,8 +35,9 @@ if TYPE_CHECKING:
     from structlog.stdlib import BoundLogger
 
     from gafaelfawr.config import Config
+    from gafaelfawr.models.history import PaginatedHistory
     from gafaelfawr.models.token import TokenInfo
-    from gafaelfawr.storage.history import TokenHistoryStore
+    from gafaelfawr.storage.history import TokenChangeHistoryStore
     from gafaelfawr.storage.token import TokenDatabaseStore, TokenRedisStore
     from gafaelfawr.storage.transaction import TransactionManager
 
@@ -48,7 +55,7 @@ class TokenService:
         The database backing store for tokens.
     token_redis_store : `gafaelfawr.storage.token.TokenRedisStore`
         The Redis backing store for tokens.
-    token_history_store : `gafaelfawr.storage.history.TokenHistoryStore`
+    token_change_store : `gafaelfawr.storage.history.TokenChangeHistoryStore`
         The backing store for history of changes to tokens.
     transaction_manager : `gafaelfawr.storage.transaction.TransactionManager`
         Database transaction manager.
@@ -62,41 +69,16 @@ class TokenService:
         config: Config,
         token_db_store: TokenDatabaseStore,
         token_redis_store: TokenRedisStore,
-        token_history_store: TokenHistoryStore,
+        token_change_store: TokenChangeHistoryStore,
         transaction_manager: TransactionManager,
         logger: BoundLogger,
     ) -> None:
         self._config = config
         self._token_db_store = token_db_store
         self._token_redis_store = token_redis_store
-        self._token_history_store = token_history_store
+        self._token_change_store = token_change_store
         self._transaction_manager = transaction_manager
         self._logger = logger
-
-    def change_history(
-        self, key: str, auth_data: TokenData, username: str
-    ) -> List[TokenChangeHistoryEntry]:
-        """Retrieve the change history of a token.
-
-        Parameters
-        ----------
-        key : `str`
-            The key of the token.
-        auth_data : `gafaelfawr.models.token.TokenData`
-            Authentication information for the user making the request.
-        username : `str`
-            Constrain token history to tokens owned by the given user.
-
-        Returns
-        -------
-        entries : List[`gafaelfawr.models.history.TokenChangeHistory.Entry`]
-            A list of changes to that token, which may be the empty list if
-            the token has never existed.  The list will be filtered down to
-            only entries for tokens matching the username of the user making
-            the request unless the user is a token admin.
-        """
-        self._check_authorization(username, auth_data)
-        return self._token_history_store.list(token=key, username=username)
 
     async def create_session_token(
         self, user_info: TokenUserInfo, *, scopes: List[str], ip_address: str
@@ -151,7 +133,7 @@ class TokenService:
         await self._token_redis_store.store_data(data)
         with self._transaction_manager.transaction():
             self._token_db_store.add(data)
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
         return token
 
@@ -242,7 +224,7 @@ class TokenService:
         await self._token_redis_store.store_data(data)
         with self._transaction_manager.transaction():
             self._token_db_store.add(data, token_name=token_name)
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
         self._logger.info(
             "Created new user token",
@@ -317,7 +299,7 @@ class TokenService:
         await self._token_redis_store.store_data(data)
         with self._transaction_manager.transaction():
             self._token_db_store.add(data, token_name=request.token_name)
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
         if data.token_type == TokenType.user:
             self._logger.info(
@@ -386,11 +368,83 @@ class TokenService:
         with self._transaction_manager.transaction():
             success = self._token_db_store.delete(key)
             if success:
-                self._token_history_store.add(history_entry)
+                self._token_change_store.add(history_entry)
 
         if success:
             self._logger.info("Deleted token", key=key, username=info.username)
         return success
+
+    def get_change_history(
+        self,
+        auth_data: TokenData,
+        *,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        username: Optional[str] = None,
+        actor: Optional[str] = None,
+        key: Optional[str] = None,
+        token: Optional[str] = None,
+        token_type: Optional[TokenType] = None,
+        ip_or_cidr: Optional[str] = None,
+    ) -> PaginatedHistory[TokenChangeHistoryEntry]:
+        """Retrieve the change history of a token.
+
+        Parameters
+        ----------
+        auth_data : `gafaelfawr.models.token.TokenData`
+            Authentication information for the user making the request.
+        cursor : `str`, optional
+            A pagination cursor specifying where to start in the results.
+        limit : `int`, optional
+            Limit the number of returned results.
+        since : `datetime.datetime`, optional
+            Limit the results to events at or after this time.
+        until : `datetime.datetime`, optional
+            Limit the results to events before or at this time.
+        username : `str`, optional
+            Limit the results to tokens owned by this user.
+        actor : `str`, optional
+            Limit the results to actions performed by this user.
+        key : `str`, optional
+            Limit the results to this token and any subtokens of this token.
+            Note that this will currently pick up direct subtokens but not
+            subtokens of subtokens.
+        token : `str`, optional
+            Limit the results to only this token.
+        token_type : `gafaelfawr.models.token.TokenType`, optional
+            Limit the results to tokens of this type.
+        ip_or_cidr : `str`, optional
+            Limit the results to changes made from this IPv4 or IPv6 address
+            or CIDR block.
+
+        Returns
+        -------
+        entries : List[`gafaelfawr.models.history.TokenChangeHistory.Entry`]
+            A list of changes matching the search criteria.
+
+        Raises
+        ------
+        gafaelfawr.exceptions.BadCursorError
+            The provided cursor was invalid.
+        gafaelfawr.exceptions.BadIpAddressError
+            The provided argument was syntactically invalid for both an
+            IP address and a CIDR block.
+        """
+        self._check_authorization(username, auth_data)
+        return self._token_change_store.list(
+            cursor=HistoryCursor.from_str(cursor) if cursor else None,
+            limit=limit,
+            since=since,
+            until=until,
+            username=username,
+            actor=actor,
+            key=key,
+            token=token,
+            token_type=token_type,
+            ip_or_cidr=ip_or_cidr,
+        )
 
     async def get_data(self, token: Token) -> Optional[TokenData]:
         """Retrieve the data for a token from Redis.
@@ -495,7 +549,7 @@ class TokenService:
             self._token_db_store.add(
                 data, service=service, parent=token_data.token.key
             )
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
         self._logger.info(
             "Created new internal token",
@@ -574,7 +628,7 @@ class TokenService:
         await self._token_redis_store.store_data(data)
         with self._transaction_manager.transaction():
             self._token_db_store.add(data, parent=token_data.token.key)
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
         self._logger.info("Created new notebook token", key=token.key)
         return token
@@ -747,7 +801,7 @@ class TokenService:
                 expires=expires,
                 no_expire=no_expire,
             )
-            self._token_history_store.add(history_entry)
+            self._token_change_store.add(history_entry)
 
             # Update the expiration in Redis if needed.
             if info and (no_expire or expires):
@@ -810,6 +864,31 @@ class TokenService:
                 self._logger.warning("Permission denied", error=msg)
                 raise PermissionDeniedError(msg)
 
+    def _validate_ip_or_cidr(self, ip_or_cidr: Optional[str]) -> None:
+        """Check that an IP address or CIDR block is valid.
+
+        Arguments
+        ---------
+        ip_address : `str` or `None`
+            `None` or a string representing an IPv4 or IPv6 address or CIDR
+            block.
+
+        Raises
+        ------
+        gafaelfawr.exceptions.BadIpAddressError
+            The provided argument was syntactically invalid for both an
+            IP address and a CIDR block.
+        """
+        if ip_or_cidr is None:
+            return None
+        try:
+            if "/" in ip_or_cidr:
+                ipaddress.ip_network(ip_or_cidr)
+            else:
+                ipaddress.ip_address(ip_or_cidr)
+        except ValueError as e:
+            raise BadIpAddressError(f"Invalid IP address: {str(e)}")
+
     def _validate_expires(self, expires: Optional[datetime]) -> None:
         """Check that a provided token expiration is valid.
 
@@ -859,9 +938,10 @@ class TokenService:
         if not scopes:
             return
         scopes_set = set(scopes)
-        if auth_data and not (scopes_set <= set(auth_data.scopes)):
-            msg = "Requested scopes are broader than your current scopes"
-            raise BadScopesError(msg)
+        if auth_data and "admin:token" not in auth_data.scopes:
+            if not (scopes_set <= set(auth_data.scopes)):
+                msg = "Requested scopes are broader than your current scopes"
+                raise BadScopesError(msg)
         if not (scopes_set <= self._config.known_scopes.keys()):
             msg = "Unknown scopes requested"
             raise BadScopesError(msg)

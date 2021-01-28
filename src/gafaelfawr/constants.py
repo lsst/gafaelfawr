@@ -6,6 +6,9 @@ ALGORITHM = "RS256"
 COOKIE_NAME = "gafaelfawr"
 """Name of the state cookie."""
 
+CURSOR_REGEX = "^p?[0-9]+_[0-9]+$"
+"""Regex matching a valid cursor."""
+
 MINIMUM_LIFETIME = 5 * 60
 """Minimum expiration lifetime for a token in seconds."""
 
@@ -17,3 +20,6 @@ SETTINGS_PATH = "/etc/gafaelfawr/gafaelfawr.yaml"
 
 USERNAME_REGEX = "^[a-z0-9._-]+$"
 """Regex matching all valid usernames."""
+
+ACTOR_REGEX = "^(?:<bootstrap>|[a-z0-9._-]+)$"
+""""Regex matching all valid actors (including ``<bootstrap``)."""

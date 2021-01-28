@@ -8,16 +8,27 @@ models.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
 
-from gafaelfawr.constants import USERNAME_REGEX
+from gafaelfawr.constants import ACTOR_REGEX, CURSOR_REGEX, USERNAME_REGEX
 from gafaelfawr.dependencies.auth import Authenticate
 from gafaelfawr.dependencies.context import RequestContext, context_dependency
 from gafaelfawr.exceptions import (
+    BadCursorError,
     BadExpiresError,
+    BadIpAddressError,
     BadScopesError,
     DuplicateTokenNameError,
 )
@@ -29,6 +40,7 @@ from gafaelfawr.models.token import (
     NewToken,
     TokenData,
     TokenInfo,
+    TokenType,
     TokenUserInfo,
     UserTokenModifyRequest,
     UserTokenRequest,
@@ -107,6 +119,67 @@ def delete_admin(
                 "msg": "Speciried user is not an administrator",
             },
         )
+
+
+@router.get(
+    "/history/token-changes",
+    response_model=List[TokenChangeHistoryEntry],
+    response_model_exclude_unset=True,
+)
+def get_admin_token_change_history(
+    response: Response,
+    cursor: Optional[str] = Query(None, regex=CURSOR_REGEX),
+    limit: Optional[int] = Query(None, ge=1),
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    username: Optional[str] = Query(
+        None, min_length=1, max_length=64, regex=USERNAME_REGEX
+    ),
+    actor: Optional[str] = Query(
+        None, min_length=1, max_length=64, regex=ACTOR_REGEX
+    ),
+    key: Optional[str] = Query(None, min_length=22, max_length=22),
+    token_type: Optional[TokenType] = None,
+    ip_address: Optional[str] = None,
+    auth_data: TokenData = Depends(authenticate_session),
+    context: RequestContext = Depends(context_dependency),
+) -> List[Dict[str, Any]]:
+    token_service = context.factory.create_token_service()
+    try:
+        results = token_service.get_change_history(
+            auth_data,
+            cursor=cursor,
+            limit=limit,
+            since=since,
+            until=until,
+            username=username,
+            actor=actor,
+            key=key,
+            token_type=token_type,
+            ip_or_cidr=ip_address,
+        )
+    except BadCursorError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "loc": ["query", "cursor"],
+                "type": "bad_cursor",
+                "msg": str(e),
+            },
+        )
+    except BadIpAddressError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "loc": ["query", "ip_address"],
+                "type": "bad_ip_address",
+                "msg": str(e),
+            },
+        )
+    if limit:
+        response.headers["Link"] = results.link_header(context.request.url)
+        response.headers["X-Total-Count"] = str(results.count)
+    return [r.reduced_dict() for r in results.entries]
 
 
 @router.get("/login", response_model=APILoginResponse)
@@ -208,6 +281,72 @@ async def get_user_info(
     auth_data: TokenData = Depends(authenticate),
 ) -> TokenUserInfo:
     return auth_data
+
+
+@router.get(
+    "/users/{username}/token-change-history",
+    response_model=List[TokenChangeHistoryEntry],
+    response_model_exclude_unset=True,
+)
+def get_user_token_change_history(
+    response: Response,
+    username: str = Path(
+        ..., min_length=1, max_length=64, regex=USERNAME_REGEX
+    ),
+    cursor: Optional[str] = Query(None, regex=CURSOR_REGEX),
+    limit: Optional[int] = Query(None, ge=1),
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    key: Optional[str] = Query(None, min_length=22, max_length=22),
+    token_type: Optional[TokenType] = None,
+    ip_address: Optional[str] = None,
+    auth_data: TokenData = Depends(authenticate_session),
+    context: RequestContext = Depends(context_dependency),
+) -> List[Dict[str, Any]]:
+    token_service = context.factory.create_token_service()
+    try:
+        results = token_service.get_change_history(
+            auth_data,
+            cursor=cursor,
+            username=username,
+            limit=limit,
+            since=since,
+            until=until,
+            key=key,
+            token_type=token_type,
+            ip_or_cidr=ip_address,
+        )
+    except BadCursorError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "loc": ["query", "cursor"],
+                "type": "bad_cursor",
+                "msg": str(e),
+            },
+        )
+    except BadIpAddressError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "loc": ["query", "ip_address"],
+                "type": "bad_ip_address",
+                "msg": str(e),
+            },
+        )
+    if not results.entries:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "loc": ["path", "username"],
+                "type": "not_found",
+                "msg": "Username not found",
+            },
+        )
+    if limit:
+        response.headers["Link"] = results.link_header(context.request.url)
+        response.headers["X-Total-Count"] = str(results.count)
+    return [r.reduced_dict() for r in results.entries]
 
 
 @router.get(
@@ -414,8 +553,10 @@ async def get_token_change_history(
     context: RequestContext = Depends(context_dependency),
 ) -> List[Dict[str, Any]]:
     token_service = context.factory.create_token_service()
-    results = token_service.change_history(key, auth_data, username)
-    if not results:
+    results = token_service.get_change_history(
+        auth_data, username=username, key=key
+    )
+    if not results.entries:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -424,4 +565,4 @@ async def get_token_change_history(
                 "msg": "Token not found",
             },
         )
-    return [r.reduced_dict() for r in results]
+    return [r.reduced_dict() for r in results.entries]

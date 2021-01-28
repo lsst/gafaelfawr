@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
@@ -14,7 +15,38 @@ from gafaelfawr.auth import (
 )
 
 if TYPE_CHECKING:
-    from typing import Dict, List
+    from typing import Dict, List, Optional
+
+
+@dataclass
+class LinkData:
+    """Holds the data returned in an RFC 8288 ``Link`` header."""
+
+    prev_url: Optional[str]
+    """The URL of the previous page, or `None` for the first page."""
+
+    next_url: Optional[str]
+    """The URL of the next page, or `None` for the last page."""
+
+    first_url: str
+    """The URL of the first page."""
+
+
+def parse_link(header: str) -> LinkData:
+    """Parse an RFC 8288 ``Link`` with pagination URLs."""
+    elements = header.split(",")
+    links = {}
+    for element in elements:
+        match = re.match(' *<([^>]+)>; rel="([^"]+)"', element)
+        assert match, f"Unable to parse Link {element}"
+        assert match.group(2) in ("prev", "next", "first")
+        links[match.group(2)] = match.group(1)
+
+    return LinkData(
+        prev_url=links.get("prev"),
+        next_url=links.get("next"),
+        first_url=links["first"],
+    )
 
 
 def parse_www_authenticate(header: str) -> AuthChallenge:

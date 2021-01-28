@@ -10,7 +10,9 @@ if TYPE_CHECKING:
     from typing import ClassVar
 
 __all__ = [
+    "BadCursorError",
     "BadExpiresError",
+    "BadIpAddressError",
     "BadScopesError",
     "DeserializeException",
     "DuplicateTokenNameError",
@@ -151,8 +153,16 @@ class InsufficientScopeError(OAuthBearerError):
     status_code = status.HTTP_403_FORBIDDEN
 
 
+class BadCursorError(Exception):
+    """The provided cursor was invalid."""
+
+
 class BadExpiresError(Exception):
     """The provided token expiration time was invalid."""
+
+
+class BadIpAddressError(Exception):
+    """The provided IP address has invalid syntax."""
 
 
 class BadScopesError(Exception):

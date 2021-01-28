@@ -147,7 +147,8 @@ class Authenticate:
 
         return data
 
-    def _build_bootstrap_token_data(self) -> TokenData:
+    @staticmethod
+    def _build_bootstrap_token_data() -> TokenData:
         """Build authentication data for the bootstrap token.
 
         This token doesn't exist in the backing store, so instead synthesize a

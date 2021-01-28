@@ -1,11 +1,16 @@
 """Representation of a token or admin history event."""
 
-from datetime import datetime
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Generic, List, Optional, TypeVar
+from urllib.parse import parse_qs, urlencode
 
 from pydantic import BaseModel, Field, validator
 
+from gafaelfawr.exceptions import BadCursorError
 from gafaelfawr.models.token import TokenType
 from gafaelfawr.util import (
     current_datetime,
@@ -13,9 +18,18 @@ from gafaelfawr.util import (
     normalize_scopes,
 )
 
+if TYPE_CHECKING:
+    from typing import Any, Dict
+
+    from starlette.datastructures import URL
+
+E = TypeVar("E", bound="BaseModel")
+
 __all__ = [
     "AdminChange",
     "AdminHistoryEntry",
+    "HistoryCursor",
+    "PaginatedHistory",
     "TokenChange",
     "TokenChangeHistoryEntry",
 ]
@@ -61,6 +75,74 @@ class AdminHistoryEntry(BaseModel):
     _normalize_event_time = validator(
         "event_time", allow_reuse=True, pre=True
     )(normalize_datetime)
+
+
+@dataclass
+class HistoryCursor:
+    """Pagination cursor for history entries."""
+
+    time: datetime
+    """Time position."""
+
+    id: int
+    """Unique ID position."""
+
+    previous: bool = False
+    """Whether to search backwards instead of forwards."""
+
+    @classmethod
+    def from_str(cls, cursor: str) -> HistoryCursor:
+        """Build cursor from the string serialization form."""
+        previous = cursor.startswith("p")
+        if previous:
+            cursor = cursor[1:]
+        try:
+            time, id = cursor.split("_")
+            return cls(
+                time=datetime.fromtimestamp(int(time), tz=timezone.utc),
+                id=int(id),
+                previous=previous,
+            )
+        except Exception as e:
+            raise BadCursorError(f"Invalid cursor: {str(e)}")
+
+    def __str__(self) -> str:
+        """Serialize to a string."""
+        previous = "p" if self.previous else ""
+        timestamp = str(int(self.time.timestamp()))
+        return f"{previous}{timestamp}_{str(self.id)}"
+
+
+@dataclass
+class PaginatedHistory(Generic[E]):
+    """Encapsulates paginated history entries with pagination information."""
+
+    entries: List[E]
+    """The history entries."""
+
+    count: int
+    """Total available entries."""
+
+    next_cursor: Optional[HistoryCursor] = None
+    """Cursor for the next batch of entries."""
+
+    prev_cursor: Optional[HistoryCursor] = None
+    """Cursor for the previous batch of entries."""
+
+    def link_header(self, base_url: URL) -> str:
+        """Construct an RFC 8288 ``Link`` header for a paginated result."""
+        first_url = base_url.remove_query_params("cursor")
+        header = f' <{str(first_url)}>; rel="first"'
+        params = parse_qs(first_url.query)
+        if self.next_cursor:
+            params["cursor"] = [str(self.next_cursor)]
+            next_url = first_url.replace(query=urlencode(params, doseq=True))
+            header += f', <{str(next_url)}>; rel="next"'
+        if self.prev_cursor:
+            params["cursor"] = [str(self.prev_cursor)]
+            prev_url = first_url.replace(query=urlencode(params, doseq=True))
+            header += f', <{str(prev_url)}>; rel="prev"'
+        return header
 
 
 class TokenChange(Enum):

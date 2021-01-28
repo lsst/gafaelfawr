@@ -674,19 +674,19 @@ async def test_bad_expires(setup: SetupTest) -> None:
 async def test_bad_scopes(setup: SetupTest) -> None:
     """Test creating or modifying a token with bogus scopes."""
     known_scopes = list(setup.config.known_scopes.keys())
-    assert len(known_scopes) > 2
+    assert len(known_scopes) > 4
     token_data = await setup.create_session_token(
-        scopes=known_scopes[0:1] + ["other:scope"]
+        scopes=known_scopes[1:3] + ["other:scope"]
     )
     csrf = await setup.login(token_data.token)
 
     # Check that we reject both an unknown scope and a scope that's present on
     # the session but isn't valid in the configuration.
-    for bad_scope in (known_scopes[2], "other:scope"):
+    for bad_scope in (known_scopes[3], "other:scope"):
         r = await setup.client.post(
             f"/auth/api/v1/users/{token_data.username}/tokens",
             headers={"X-CSRF-Token": csrf},
-            json={"token_name": "some token", "scopes": [known_scopes[2]]},
+            json={"token_name": "some token", "scopes": [bad_scope]},
         )
         assert r.status_code == 422
         data = r.json()
@@ -697,17 +697,17 @@ async def test_bad_scopes(setup: SetupTest) -> None:
     r = await setup.client.post(
         f"/auth/api/v1/users/{token_data.username}/tokens",
         headers={"X-CSRF-Token": csrf},
-        json={"token_name": "some token", "scopes": known_scopes[0:1]},
+        json={"token_name": "some token", "scopes": known_scopes[1:3]},
     )
     assert r.status_code == 201
     token_url = r.headers["Location"]
 
     # Now try modifying it with the invalid scope.
-    for bad_scope in (known_scopes[2], "other:scope"):
+    for bad_scope in (known_scopes[3], "other:scope"):
         r = await setup.client.patch(
             token_url,
             headers={"X-CSRF-Token": csrf},
-            json={"scopes": [known_scopes[0], bad_scope]},
+            json={"scopes": [known_scopes[1], bad_scope]},
         )
         assert r.status_code == 422
         data = r.json()

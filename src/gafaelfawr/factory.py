@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import structlog
 from sqlalchemy import create_engine
@@ -17,7 +18,10 @@ from gafaelfawr.services.oidc import OIDCService
 from gafaelfawr.services.token import TokenService
 from gafaelfawr.storage.admin import AdminStore
 from gafaelfawr.storage.base import RedisStorage
-from gafaelfawr.storage.history import AdminHistoryStore, TokenHistoryStore
+from gafaelfawr.storage.history import (
+    AdminHistoryStore,
+    TokenChangeHistoryStore,
+)
 from gafaelfawr.storage.oidc import OIDCAuthorization, OIDCAuthorizationStore
 from gafaelfawr.storage.token import TokenDatabaseStore, TokenRedisStore
 from gafaelfawr.storage.transaction import TransactionManager
@@ -64,7 +68,12 @@ class ComponentFactory:
             assert logger
 
         if not session:
-            engine = create_engine(config.database_url)
+            connect_args = {}
+            if urlparse(config.database_url).scheme == "sqlite":
+                connect_args["check_same_thread"] = False
+            engine = create_engine(
+                config.database_url, connect_args=connect_args
+            )
             session = Session(bind=engine)
 
         self._config = config
@@ -167,13 +176,13 @@ class ComponentFactory:
         key = self._config.session_secret
         storage = RedisStorage(TokenData, key, self._redis)
         token_redis_store = TokenRedisStore(storage, self._logger)
-        token_history_store = TokenHistoryStore(self._session)
+        token_change_store = TokenChangeHistoryStore(self._session)
         transaction_manager = TransactionManager(self._session)
         return TokenService(
             config=self._config,
             token_db_store=token_db_store,
             token_redis_store=token_redis_store,
-            token_history_store=token_history_store,
+            token_change_store=token_change_store,
             transaction_manager=transaction_manager,
             logger=self._logger,
         )
