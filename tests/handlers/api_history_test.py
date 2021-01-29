@@ -135,15 +135,18 @@ async def build_history(
         ip_address="2001:db8:034a:ea78:4278:4562:6578:9876",
     )
 
-    # Spread out the timestamps so that we can test date range queries.
+    # Spread out the timestamps so that we can test date range queries.  Every
+    # other entry has the same timestamp as the previous entry to test that
+    # queries handle entries with the same timestamp.
     engine = create_engine(setup.config.database_url)
     session = Session(bind=engine)
     entries = session.query(TokenChangeHistory).all()
     event_time = current_datetime() - timedelta(seconds=len(entries) * 5)
     with TransactionManager(session).transaction():
-        for entry in entries:
+        for i, entry in enumerate(entries):
             entry.event_time = event_time
-            event_time += timedelta(seconds=5)
+            if i % 2 != 0:
+                event_time += timedelta(seconds=5)
 
     history = token_service.get_change_history(service_token_data)
     assert history.count == 15
@@ -337,17 +340,17 @@ async def test_admin_change_history(setup: SetupTest) -> None:
     )
     await check_history_request(
         setup,
-        {"until": int(history[6].event_time.timestamp())},
-        history[:7],
+        {"until": int(history[7].event_time.timestamp())},
+        history[:8],
         lambda e: True,
     )
     await check_history_request(
         setup,
         {
-            "since": int(history[3].event_time.timestamp()),
-            "until": int(history[7].event_time.timestamp()),
+            "since": int(history[2].event_time.timestamp()),
+            "until": int(history[9].event_time.timestamp()),
         },
-        history[3:8],
+        history[2:10],
         lambda e: True,
     )
 
@@ -432,10 +435,10 @@ async def test_user_change_history(setup: SetupTest) -> None:
     await check_history_request(
         setup,
         {
-            "since": int(history[3].event_time.timestamp()),
-            "until": int(history[4].event_time.timestamp()),
+            "since": int(history[4].event_time.timestamp()),
+            "until": int(history[6].event_time.timestamp()),
         },
-        history[3:5],
+        history[4:7],
         lambda e: True,
         username="one",
     )
