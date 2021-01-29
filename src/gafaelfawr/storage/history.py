@@ -202,11 +202,13 @@ class TokenChangeHistoryStore:
             if limit:
                 next_cursor = HistoryCursor(time=cursor.time, id=cursor.id)
                 if len(entries) > limit:
-                    prev_time = normalize_datetime(entries[limit].event_time)
+                    prev_time = normalize_datetime(
+                        entries[limit - 1].event_time
+                    )
                     assert prev_time
                     prev_cursor = HistoryCursor(
                         time=prev_time,
-                        id=entries[limit].id,
+                        id=entries[limit - 1].id,
                         previous=True,
                     )
                     entries = entries[:limit]

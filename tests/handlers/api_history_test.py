@@ -194,13 +194,18 @@ async def check_pagination(
     each point that the prev URL also returns correct data.
     """
     query = urlencode({"limit": 5})
+
+    # First, walk forward with a pagination step of five and check next URLs
+    # and previous URLs as we go.
     if username:
-        first = f"/auth/api/v1/users/{username}/token-change-history?{query}"
+        url = f"/auth/api/v1/users/{username}/token-change-history?{query}"
     else:
-        first = f"/auth/api/v1/history/token-changes?{query}"
+        url = f"/auth/api/v1/history/token-changes?{query}"
+    first_url = url
     prev_data = None
-    r = await setup.client.get(first)
+    all_data = []
     for end in range(5, len(history) + 4, 5):
+        r = await setup.client.get(url)
         assert r.status_code == 200
         data = r.json()
         assert data == [entry_to_dict(e) for e in history[end - 5 : end]]
@@ -209,6 +214,7 @@ async def check_pagination(
         # Check the Link contents, except for the next URL, which we'll check
         # by using it to retrieve the next data.
         link_data = parse_link(r.headers["Link"])
+        assert link_data.first_url == f"https://{TEST_HOSTNAME}{first_url}"
         if end == 5:
             assert not link_data.prev_url
         else:
@@ -216,13 +222,35 @@ async def check_pagination(
             r = await setup.client.get(link_data.prev_url)
             assert r.status_code == 200
             assert r.json() == prev_data
-        prev_data = data
-        assert link_data.first_url == f"https://{TEST_HOSTNAME}{first}"
+            assert r.headers["X-Total-Count"] == str(len(history))
+            prev_link_data = parse_link(r.headers["Link"])
+            assert prev_link_data.first_url == link_data.first_url
+            assert prev_link_data.next_url == url
 
+        # Save the data for previous URL checks.
+        prev_data = data
+        all_data.extend(data)
+
+        # If we're not done, move to the next URL.
         if end < len(history):
             assert link_data.next_url
-            r = await setup.client.get(link_data.next_url)
+            url = link_data.next_url
+
+    # Should be no next URL for the last batch of data.
     assert not link_data.next_url
+
+    # data contains the last batch of data.  Walking backwards using previous
+    # URLs, we should be able to reconstruct all of the data and have it
+    # match.  This tests the previous URLs generated after following previous
+    # URLs.
+    backwards_data = data
+    while link_data.prev_url:
+        r = await setup.client.get(link_data.prev_url)
+        assert r.status_code == 200
+        assert r.headers["X-Total-Count"] == str(len(history))
+        backwards_data = r.json() + backwards_data
+        link_data = parse_link(r.headers["Link"])
+    assert all_data == backwards_data
 
 
 @pytest.mark.asyncio
