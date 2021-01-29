@@ -106,6 +106,13 @@ class HistoryCursor:
         except Exception as e:
             raise BadCursorError(f"Invalid cursor: {str(e)}")
 
+    @classmethod
+    def invert(cls, cursor: HistoryCursor) -> HistoryCursor:
+        """Return the inverted cursor (going the opposite direction)."""
+        return cls(
+            time=cursor.time, id=cursor.id, previous=not cursor.previous
+        )
+
     def __str__(self) -> str:
         """Serialize to a string."""
         previous = "p" if self.previous else ""
