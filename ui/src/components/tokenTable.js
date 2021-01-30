@@ -1,27 +1,13 @@
 // Render a list of tokens in tabular form.
 
-import formatDistanceToNow from 'date-fns/formatDistanceToNow';
-import fromUnixTime from 'date-fns/fromUnixTime';
 import React, { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useTable } from 'react-table';
 import { FaEdit, FaTrash } from 'react-icons/fa';
 
-function Timestamp({ timestamp, past }) {
-  if (!timestamp) return <em>never</em>;
-  const date = fromUnixTime(timestamp);
-  const relative = formatDistanceToNow(date, { addSuffix: past });
-  const absolute = date.toISOString().replace(/\.0+Z$/, 'Z');
-  return (
-    <time title={absolute} dateTime={absolute}>
-      {relative}
-    </time>
-  );
-}
-Timestamp.propTypes = {
-  timestamp: PropTypes.number.isRequired,
-  past: PropTypes.bool.isRequired,
-};
+import Timestamp from './timestamp';
+import Token from './token';
+import TokenName from './tokenName';
 
 function DeleteTokenButton({ token, onDeleteToken }) {
   const onClick = () => {
@@ -53,20 +39,6 @@ EditTokenButton.propTypes = {
   onEditToken: PropTypes.func.isRequired,
 };
 
-function Token({ token }) {
-  return <code className="qa-token">{token}</code>;
-}
-Token.propTypes = {
-  token: PropTypes.string.isRequired,
-};
-
-function TokenName({ name }) {
-  return <span className="qa-token-name">{name}</span>;
-}
-TokenName.propTypes = {
-  name: PropTypes.string.isRequired,
-};
-
 export default function TokenTable({
   id,
   data,
@@ -76,6 +48,12 @@ export default function TokenTable({
 }) {
   const columns = useMemo(() => {
     const tokenBase = [
+      {
+        Header: 'Token',
+        // eslint-disable-next-line react/display-name, react/prop-types
+        Cell: ({ value }) => <Token token={value} />,
+        accessor: 'token',
+      },
       {
         Header: 'Scopes',
         Cell: ({ value }) => value.join(', '),
@@ -102,14 +80,6 @@ export default function TokenTable({
         accessor: 'token_name',
       },
     ];
-    const tokenCode = [
-      {
-        Header: 'Token',
-        // eslint-disable-next-line react/display-name, react/prop-types
-        Cell: ({ value }) => <Token token={value} />,
-        accessor: 'token',
-      },
-    ];
     const tokenEdit = [
       {
         id: 'edit',
@@ -132,7 +102,7 @@ export default function TokenTable({
         accessor: 'token',
       },
     ];
-    const partial = (includeName ? tokenName : tokenCode).concat(tokenBase);
+    const partial = (includeName ? tokenName : []).concat(tokenBase);
     if (onEditToken) {
       return partial.concat(tokenEdit).concat(tokenDelete);
     }
