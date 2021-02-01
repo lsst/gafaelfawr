@@ -2,7 +2,7 @@ import React from 'react';
 
 import ErrorBanner from '../components/errorBanner';
 import { LoginContext } from '../components/loginContext';
-import TokenInfo from '../components/tokenInfo';
+import TokenList from '../components/tokenList';
 import useError from '../hooks/error';
 import useLogin from '../hooks/login';
 
@@ -15,7 +15,7 @@ export default function Home() {
       <div id="application">
         <ErrorBanner error={error} />
         <h1>Tokens</h1>
-        <TokenInfo onError={onError} />
+        <TokenList onError={onError} />
       </div>
     </LoginContext.Provider>
   );

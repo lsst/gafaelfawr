@@ -14,7 +14,7 @@ import TokenTable from './tokenTable';
 import useError from '../hooks/error';
 import { apiDelete, apiGet, apiPost } from '../functions/api';
 
-export default function TokenInfo({ onError }) {
+export default function TokenList({ onError }) {
   const { csrf, username, userScopes, config } = useContext(LoginContext);
   const [data, setData] = useState(null);
   const [editingToken, _setEditingToken] = useState(null);
@@ -128,6 +128,6 @@ export default function TokenInfo({ onError }) {
     </>
   );
 }
-TokenInfo.propTypes = {
+TokenList.propTypes = {
   onError: PropTypes.func.isRequired,
 };
