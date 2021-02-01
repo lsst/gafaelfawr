@@ -10,6 +10,7 @@ import React, {
 import { LoginContext } from './loginContext';
 import Timestamp from './timestamp';
 import Token from './token';
+import TokenChangeHistory from './tokenChangeHistory';
 import TokenName from './tokenName';
 import { apiGet } from '../functions/api';
 
@@ -30,68 +31,72 @@ export default function TokenData({ token, onError }) {
   if (!tokenData) return <p>Loading...</p>;
 
   return (
-    <table>
-      <tbody>
-        <tr>
-          <th scope="row">Token</th>
-          <td>
-            <Token token={tokenData.token} link={false} />
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Username</th>
-          <td>{tokenData.username}</td>
-        </tr>
-        <tr>
-          <th scope="row">Type</th>
-          <td>{tokenData.token_type}</td>
-        </tr>
-        {tokenData.token_name && (
+    <>
+      <table>
+        <tbody>
           <tr>
-            <th scope="row">Name</th>
+            <th scope="row">Token</th>
             <td>
-              <TokenName name={tokenData.token_name} />
+              <Token token={tokenData.token} link={false} />
             </td>
           </tr>
-        )}
-        <tr>
-          <th scope="row">Scopes</th>
-          <td>{tokenData.scopes.join(', ')}</td>
-        </tr>
-        {tokenData.service && (
           <tr>
-            <th scope="row">Service</th>
-            <td>{tokenData.service}</td>
+            <th scope="row">Username</th>
+            <td>{tokenData.username}</td>
           </tr>
-        )}
-        {tokenData.parent && (
           <tr>
-            <th scope="row">Parent</th>
+            <th scope="row">Type</th>
+            <td>{tokenData.token_type}</td>
+          </tr>
+          {tokenData.token_name && (
+            <tr>
+              <th scope="row">Name</th>
+              <td>
+                <TokenName name={tokenData.token_name} />
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">Scopes</th>
+            <td>{tokenData.scopes.join(', ')}</td>
+          </tr>
+          {tokenData.service && (
+            <tr>
+              <th scope="row">Service</th>
+              <td>{tokenData.service}</td>
+            </tr>
+          )}
+          {tokenData.parent && (
+            <tr>
+              <th scope="row">Parent</th>
+              <td>
+                <Token token={tokenData.parent} />
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">Created</th>
             <td>
-              <Token token={tokenData.parent} />
+              <Timestamp timestamp={tokenData.created} past />
             </td>
           </tr>
-        )}
-        <tr>
-          <th scope="row">Created</th>
-          <td>
-            <Timestamp timestamp={tokenData.created} past />
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Last Used</th>
-          <td>
-            <Timestamp timestamp={tokenData.last_used} past />
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Expires</th>
-          <td>
-            <Timestamp timestamp={tokenData.expires} past={false} />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+          <tr>
+            <th scope="row">Last Used</th>
+            <td>
+              <Timestamp timestamp={tokenData.last_used} past />
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Expires</th>
+            <td>
+              <Timestamp timestamp={tokenData.expires} past={false} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Change History</h2>
+      <TokenChangeHistory token={token} onError={onError} />
+    </>
   );
 }
 TokenData.propTypes = {
