@@ -149,7 +149,7 @@ class TokenChangeHistoryStore:
 
         # Perform the query and return the results.
         query = query.order_by(
-            TokenChangeHistory.event_time, TokenChangeHistory.id
+            TokenChangeHistory.event_time.desc(), TokenChangeHistory.id.desc()
         )
         entries = query.all()
         return PaginatedHistory[TokenChangeHistoryEntry](
@@ -178,12 +178,12 @@ class TokenChangeHistoryStore:
         # result set to return it in proper forward-sorted order.
         if cursor and cursor.previous:
             limited_query = limited_query.order_by(
-                TokenChangeHistory.event_time.desc(),
-                TokenChangeHistory.id.desc(),
+                TokenChangeHistory.event_time, TokenChangeHistory.id
             )
         else:
             limited_query = limited_query.order_by(
-                TokenChangeHistory.event_time, TokenChangeHistory.id
+                TokenChangeHistory.event_time.desc(),
+                TokenChangeHistory.id.desc(),
             )
 
         # Grab one more element than the query limit so that we know whether
@@ -230,20 +230,20 @@ class TokenChangeHistoryStore:
         if cursor.previous:
             return query.filter(
                 or_(
-                    TokenChangeHistory.event_time < cursor.time,
+                    TokenChangeHistory.event_time > cursor.time,
                     and_(
                         TokenChangeHistory.event_time == cursor.time,
-                        TokenChangeHistory.id < cursor.id,
+                        TokenChangeHistory.id > cursor.id,
                     ),
                 )
             )
         else:
             return query.filter(
                 or_(
-                    TokenChangeHistory.event_time > cursor.time,
+                    TokenChangeHistory.event_time < cursor.time,
                     and_(
                         TokenChangeHistory.event_time == cursor.time,
-                        TokenChangeHistory.id >= cursor.id,
+                        TokenChangeHistory.id <= cursor.id,
                     ),
                 )
             )

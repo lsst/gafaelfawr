@@ -140,7 +140,9 @@ async def build_history(
     # queries handle entries with the same timestamp.
     engine = create_engine(setup.config.database_url)
     session = Session(bind=engine)
-    entries = session.query(TokenChangeHistory).all()
+    entries = (
+        session.query(TokenChangeHistory).order_by(TokenChangeHistory.id).all()
+    )
     event_time = current_datetime() - timedelta(seconds=len(entries) * 5)
     with TransactionManager(session).transaction():
         for i, entry in enumerate(entries):
@@ -335,22 +337,22 @@ async def test_admin_change_history(setup: SetupTest) -> None:
     await check_history_request(
         setup,
         {"since": int(history[4].event_time.timestamp())},
-        history[4:],
+        history[:5],
         lambda e: True,
     )
     await check_history_request(
         setup,
         {"until": int(history[7].event_time.timestamp())},
-        history[:8],
+        history[7:],
         lambda e: True,
     )
     await check_history_request(
         setup,
         {
-            "since": int(history[2].event_time.timestamp()),
-            "until": int(history[9].event_time.timestamp()),
+            "since": int(history[8].event_time.timestamp()),
+            "until": int(history[3].event_time.timestamp()),
         },
-        history[2:10],
+        history[3:9],
         lambda e: True,
     )
 
@@ -420,25 +422,25 @@ async def test_user_change_history(setup: SetupTest) -> None:
     )
     await check_history_request(
         setup,
-        {"since": int(history[2].event_time.timestamp())},
-        history[2:],
-        lambda e: True,
-        username="one",
-    )
-    await check_history_request(
-        setup,
-        {"until": int(history[3].event_time.timestamp())},
+        {"since": int(history[3].event_time.timestamp())},
         history[:4],
         lambda e: True,
         username="one",
     )
     await check_history_request(
         setup,
+        {"until": int(history[2].event_time.timestamp())},
+        history[2:],
+        lambda e: True,
+        username="one",
+    )
+    await check_history_request(
+        setup,
         {
-            "since": int(history[4].event_time.timestamp()),
-            "until": int(history[6].event_time.timestamp()),
+            "since": int(history[5].event_time.timestamp()),
+            "until": int(history[4].event_time.timestamp()),
         },
-        history[4:7],
+        history[4:6],
         lambda e: True,
         username="one",
     )
